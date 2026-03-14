@@ -38,11 +38,12 @@ function formatDate(d) {
 // ── แจ้งเตือนอัตโนมัติทุก 1 นาที (ใช้ setInterval แทน node-cron) ──
 async function checkReminders() {
   try {
-    const now = new Date();
+    // ใช้เวลาไทย UTC+7
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
     const todayStr = formatDate(now);
     const target = new Date(now.getTime() + 30 * 60 * 1000);
     const targetTime = `${String(target.getHours()).padStart(2,'0')}:${String(target.getMinutes()).padStart(2,'0')}:00`;
-    console.log(`🔔 เช็คแจ้งเตือน: ${todayStr} ${targetTime}`);
+    console.log(`🔔 เช็คแจ้งเตือน (ไทย): ${todayStr} ${targetTime}`);
     const { data, error } = await supabase.from('appointments').select('*')
       .eq('meeting_date', todayStr).eq('start_time', targetTime).eq('reminded', false);
     if (error) { console.error('Reminder query error:', error); return; }
