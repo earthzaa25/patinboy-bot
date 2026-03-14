@@ -61,7 +61,7 @@ async function parseAppointmentWithClaude(text) {
 ข้อความ: "${text}"
 ตอบเฉพาะ JSON เท่านั้น:
 {"isAppointment":true/false,"title":"ชื่อนัดหมาย","date":"YYYY-MM-DD หรือ null","time":"HH:MM หรือ null","location":"สถานที่ หรือ null"}
-กฎ: วันนี้=${todayStr}, พรุ่งนี้=${tomorrowStr}, บ่ายโมง=13:00, บ่ายสอง=14:00, บ่ายสาม=15:00, บ่ายสี่=16:00, บ่ายห้า=17:00, ทุ่มหนึ่ง=19:00, สองทุ่ม=20:00, สามทุ่ม=21:00, เที่ยง=12:00, 1300=13:00, ถ้าไม่เกี่ยวกับนัดหมายให้ isAppointment=false`;
+กฎ: วันนี้=${todayStr}, พรุ่งนี้=${tomorrowStr}, บ่ายโมง=13:00, บ่ายสอง=14:00, บ่ายสาม=15:00, บ่ายสี่=16:00, บ่ายห้า=17:00, ทุ่มหนึ่ง=19:00, สองทุ่ม=20:00, สามทุ่ม=21:00, เที่ยง=12:00, ถ้าเห็นตัวเลขเวลาเช่น 14:12 หรือ 1412 ให้เก็บเป็น HH:MM ตามที่เห็นจริงๆ ห้ามปัดเวลา, ถ้าไม่เกี่ยวกับนัดหมายให้ isAppointment=false`;
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
