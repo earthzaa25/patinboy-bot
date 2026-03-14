@@ -188,9 +188,15 @@ async function getTodayAppointments(userId) {
 }
 
 async function getAllAppointments(userId) {
+  const now = new Date();
+  const firstDay = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const lastDay = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
   const { data, error } = await supabase.from('appointments').select('*')
-    .eq('user_id', userId).gte('meeting_date', formatDate(new Date()))
-    .order('meeting_date', { ascending: true }).order('start_time', { ascending: true }).limit(20);
+    .eq('user_id', userId)
+    .gte('meeting_date', firstDay)
+    .lte('meeting_date', lastDay)
+    .order('meeting_date', { ascending: true })
+    .order('start_time', { ascending: true });
   if (error) return [];
   return data || [];
 }
@@ -478,14 +484,17 @@ function flexAllSchedule(appointments) {
     contents: [{ type: 'text', text: 'ไม่มีนัดหมายที่กำลังจะมาถึงครับ 😊', size: 'sm', color: '#6b7280', align: 'center' }],
   }];
 
+  const now = new Date();
+  const monthStr = now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
   return {
-    type: 'flex', altText: `นัดหมายทั้งหมด — ${appointments.length} รายการ`,
+    type: 'flex', altText: `นัดหมายเดือนนี้ — ${appointments.length} รายการ`,
     contents: {
       type: 'bubble',
       header: {
         type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
         contents: [
-          { type: 'text', text: 'นัดหมายที่กำลังจะมาถึง', size: 'xl', weight: 'bold', color: '#ffffff' },
+          { type: 'text', text: monthStr, size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: 'นัดหมายเดือนนี้', size: 'xl', weight: 'bold', color: '#ffffff' },
           { type: 'box', layout: 'vertical', backgroundColor: '#06C755', cornerRadius: '20px', paddingAll: '4px', paddingStart: '10px', paddingEnd: '10px', margin: 'sm',
             contents: [{ type: 'text', text: `${appointments.length} รายการ`, size: 'xs', color: '#ffffff', weight: 'bold' }] },
         ],
