@@ -79,6 +79,7 @@ async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return;
   const userId = event.source.userId;
   const msg = event.message.text.trim();
+  console.log('USER ID:', userId);
 
   if (msg.startsWith('ลบ:')) {
     delete userState[userId];
