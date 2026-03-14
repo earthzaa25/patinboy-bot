@@ -122,7 +122,26 @@ async function handleEvent(event) {
   const userId = event.source.userId;
   const msg = event.message.text.trim();
 
-  // จัดการ state ลบ/แก้ไข
+  // ตรวจสอบปุ่มลบ/แก้ไขก่อนเสมอ
+  if (msg.startsWith('ลบ:')) {
+    delete userState[userId];
+    const id = msg.replace('ลบ:', '');
+    return await deleteAppointment(event, userId, id);
+  }
+  if (msg.startsWith('แก้ไข:')) {
+    delete userState[userId];
+    const id = msg.replace('แก้ไข:', '');
+    const { data } = await supabase.from('appointments').select('*').eq('id', id).single();
+    if (data) {
+      userState[userId] = { step: 'editing', apt: data };
+      return reply(event, [{ type: 'text', text: `✏️ แก้ไข "${data.title}"
+
+บอกข้อมูลใหม่ได้เลยครับ เช่น
+"พรุ่งนี้ บ่ายสอง ประชุมทีม"` }]);
+    }
+  }
+
+  // จัดการ state
   if (userState[userId]) return handleState(event, userId, msg);
 
   if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
