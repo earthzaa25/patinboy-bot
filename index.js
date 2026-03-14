@@ -459,33 +459,89 @@ function flexSchedule(appointments) {
   };
 }
 
-// ── FLEX: All Schedule ──
+// ── FLEX: All Schedule (จัดกลุ่มตามวัน) ──
 function flexAllSchedule(appointments) {
-  const items = appointments.length > 0 ? appointments.map(apt => ({
-    type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '10px',
-    paddingAll: '12px', margin: 'sm', spacing: 'md', alignItems: 'center',
-    contents: [
-      { type: 'box', layout: 'vertical', flex: 0, width: '44px', alignItems: 'center',
-        contents: [
-          { type: 'text', text: apt.meeting_date.slice(5), size: 'xs', weight: 'bold', color: '#06C755', align: 'center' },
-          { type: 'text', text: apt.start_time.slice(0,5), size: 'xs', color: '#6b7280', align: 'center' },
-        ],
-      },
-      { type: 'separator' },
-      { type: 'box', layout: 'vertical', flex: 1,
-        contents: [
-          { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
-          apt.location ? { type: 'text', text: `📍 ${apt.location}`, size: 'xs', color: '#6b7280' } : { type: 'filler' },
-        ],
-      },
-    ],
-  })) : [{
-    type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '16px',
-    contents: [{ type: 'text', text: 'ไม่มีนัดหมายที่กำลังจะมาถึงครับ 😊', size: 'sm', color: '#6b7280', align: 'center' }],
-  }];
-
   const now = new Date();
   const monthStr = now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const colors = ['#06C755', '#3b82f6', '#FF6B35', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b'];
+
+  if (appointments.length === 0) {
+    return {
+      type: 'flex', altText: 'นัดหมายเดือนนี้',
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+          contents: [
+            { type: 'text', text: monthStr, size: 'xs', color: '#94a3b8' },
+            { type: 'text', text: 'นัดหมายเดือนนี้', size: 'xl', weight: 'bold', color: '#ffffff' },
+          ],
+        },
+        body: {
+          type: 'box', layout: 'vertical', paddingAll: '16px',
+          contents: [{
+            type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '16px',
+            contents: [{ type: 'text', text: 'ไม่มีนัดหมายเดือนนี้ครับ 😊', size: 'sm', color: '#6b7280', align: 'center' }],
+          }],
+        },
+        footer: {
+          type: 'box', layout: 'vertical', paddingAll: '12px',
+          contents: [{ type: 'button', style: 'primary', color: '#06C755', height: 'sm', action: { type: 'message', label: '+ เพิ่มนัด', text: 'เพิ่มนัด' } }],
+        },
+      },
+    };
+  }
+
+  // จัดกลุ่มตามวัน
+  const groups = {};
+  for (const apt of appointments) {
+    const d = apt.meeting_date;
+    if (!groups[d]) groups[d] = [];
+    groups[d].push(apt);
+  }
+
+  let colorIdx = 0;
+  const items = [];
+  for (const [date, apts] of Object.entries(groups)) {
+    const d = new Date(date + 'T00:00:00');
+    const dayName = dayNames[d.getDay()];
+    const day = d.getDate();
+    const month = monthNames[d.getMonth()];
+    const color = colors[colorIdx % colors.length];
+    colorIdx++;
+
+    // Group header
+    items.push({
+      type: 'box', layout: 'vertical', margin: items.length > 0 ? 'md' : 'none',
+      contents: [{
+        type: 'text', text: `${dayName}ที่ ${day} ${month}`,
+        size: 'xs', weight: 'bold', color: color,
+      }],
+    });
+
+    // Appointments in this group
+    for (const apt of apts) {
+      const isOrange = apt.start_time.slice(0,5) < new Date().toTimeString().slice(0,5) && date === new Date().toISOString().slice(0,10);
+      items.push({
+        type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '8px',
+        paddingAll: '10px', margin: 'xs', spacing: 'sm', alignItems: 'center',
+        contents: [
+          { type: 'box', layout: 'vertical', flex: 0, width: '4px', height: '32px', backgroundColor: color, cornerRadius: '2px' },
+          { type: 'box', layout: 'vertical', flex: 1, paddingStart: '8px',
+            contents: [
+              { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
+              apt.location
+                ? { type: 'text', text: `⏰ ${apt.start_time.slice(0,5)}  📍 ${apt.location}`, size: 'xs', color: '#6b7280', margin: 'xs' }
+                : { type: 'text', text: `⏰ ${apt.start_time.slice(0,5)}`, size: 'xs', color: '#6b7280', margin: 'xs' },
+            ],
+          },
+        ],
+      });
+    }
+  }
+
   return {
     type: 'flex', altText: `นัดหมายเดือนนี้ — ${appointments.length} รายการ`,
     contents: {
