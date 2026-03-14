@@ -97,7 +97,7 @@ async function handleEvent(event) {
 
   if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
   if (msg === 'เมนู') return reply(event, [flexMenu()]);
-  if (msg === 'เพิ่มนัด') return reply(event, [{ type: 'text', text: '📅 บอกนัดหมายได้เลยครับ\n\nเช่น:\n• พรุ่งนี้ บ่ายโมง ประชุมทีม\n• 15/3 14:00 นัดหมอ\n• วันนี้ 3 ทุ่ม กินข้าว' }]);
+  if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
   if (msg === 'ติดต่อเรา') return reply(event, [{ type: 'text', text: '💬 ติดต่อทีมงานได้เลยครับ\n\nLINE: @patinboy\nหรือส่งข้อความมาได้เลยครับ 😊' }]);
   if (msg === 'กำหนดการ' || msg === 'ดูนัดหมาย') return reply(event, [flexSchedule(await getTodayAppointments(userId))]);
   if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
@@ -532,5 +532,36 @@ function flexSelectAppointment(apts, action) {
   };
 }
 
+
+// ── FLEX: Add Appointment ──
+function flexAddAppointment() {
+  return {
+    type: 'flex', altText: 'เพิ่มนัดหมายใหม่',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#06C755', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '➕ เพิ่มนัดหมายใหม่', size: 'xs', color: '#ffffff' },
+          { type: 'text', text: 'บอกได้เลยครับ!', size: 'xl', weight: 'bold', color: '#ffffff' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+        contents: [
+          { type: 'text', text: 'พิมพ์นัดหมายแบบธรรมชาติได้เลยครับ', size: 'sm', color: '#111111', weight: 'bold' },
+          { type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '12px', margin: 'sm', spacing: 'sm',
+            contents: [
+              { type: 'text', text: '"พรุ่งนี้ บ่ายโมง ประชุมทีม"', size: 'sm', color: '#6b7280' },
+              { type: 'text', text: '"15/3 14:00 นัดหมอ"', size: 'sm', color: '#6b7280' },
+              { type: 'text', text: '"วันนี้ 3 ทุ่ม กินข้าวกับครอบครัว"', size: 'sm', color: '#6b7280' },
+            ],
+          },
+          { type: 'text', text: 'AI จะวิเคราะห์และบันทึกให้อัตโนมัติครับ', size: 'xs', color: '#9ca3af', margin: 'sm' },
+        ],
+      },
+    },
+  };
+}
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ ปฏิทินBoy Bot รันที่ port ${PORT}`));
