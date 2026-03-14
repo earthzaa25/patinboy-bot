@@ -107,18 +107,28 @@ async function handleEvent(event) {
   if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
   if (msg === 'เมนู') return reply(event, [flexMenu()]);
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
-  if (msg === 'ติดต่อเรา') return reply(event, [{ type: 'text', text: '💬 ติดต่อทีมงานได้เลยครับ\n\nLINE: @patinboy\nหรือส่งข้อความมาได้เลยครับ 😊' }]);
+  if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
+  if (msg === 'แจ้งปัญหาการใช้งาน' || msg === 'แนะนำฟีเจอร์' || msg === 'สอบถามแผนและราคา' || msg === 'อื่นๆ') {
+    return reply(event, [{ type: 'text', text: `✅ รับเรื่องแล้วครับ!
+
+หัวข้อ: ${msg}
+
+ทีมงานจะติดต่อกลับภายใน 24 ชั่วโมงครับ 😊`, quickReply: { items: [
+      { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
+      { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
+    ]}}]);
+  }
   if (msg === 'กำหนดการ' || msg === 'ดูนัดหมาย') return reply(event, [flexSchedule(await getTodayAppointments(userId))]);
   if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
   if (msg === 'ลบนัดหมาย') {
-    const apts = await getTodayAppointments(userId);
-    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายวันนี้ครับ 😊' }]);
+    const apts = await getAllAppointments(userId);
+    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
     userState[userId] = { step: 'selectDelete', apts };
     return reply(event, [flexSelectAppointment(apts, 'ลบ')]);
   }
   if (msg === 'แก้ไขนัดหมาย') {
-    const apts = await getTodayAppointments(userId);
-    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายวันนี้ครับ 😊' }]);
+    const apts = await getAllAppointments(userId);
+    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
     userState[userId] = { step: 'selectEdit', apts };
     return reply(event, [flexSelectAppointment(apts, 'แก้ไข')]);
   }
@@ -624,6 +634,86 @@ function flexAddAppointment() {
             ],
           },
           { type: 'text', text: 'AI จะวิเคราะห์และบันทึกให้อัตโนมัติครับ', size: 'xs', color: '#9ca3af', margin: 'sm' },
+        ],
+      },
+    },
+  };
+}
+
+// ── FLEX: Contact ──
+function flexContact() {
+  return {
+    type: 'flex', altText: '💬 ติดต่อเรา',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '💬 ติดต่อเรา', size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: 'แจ้งปัญหาการใช้งาน', size: 'xl', weight: 'bold', color: '#ffffff' },
+          { type: 'text', text: 'ทีมงานจะติดต่อกลับภายใน 24 ชั่วโมงครับ', size: 'xs', color: '#94a3b8', margin: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+        contents: [
+          { type: 'text', text: 'เลือกหัวข้อที่ต้องการแจ้งครับ', size: 'sm', weight: 'bold', color: '#111111', margin: 'sm' },
+          { type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '12px', margin: 'sm',
+            action: { type: 'message', label: 'แจ้งปัญหา', text: 'แจ้งปัญหาการใช้งาน' },
+            contents: [
+              { type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm',
+                contents: [
+                  { type: 'text', text: '🐛', flex: 0, size: 'xl' },
+                  { type: 'box', layout: 'vertical', flex: 1,
+                    contents: [
+                      { type: 'text', text: 'พบปัญหาการใช้งาน', size: 'sm', weight: 'bold', color: '#111111' },
+                      { type: 'text', text: 'Bot ไม่ตอบ หรือตอบผิด', size: 'xs', color: '#6b7280' },
+                    ]},
+                  { type: 'text', text: '›', size: 'lg', color: '#d1d5db', flex: 0 },
+                ]},
+            ]},
+          { type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '12px', margin: 'sm',
+            action: { type: 'message', label: 'แนะนำฟีเจอร์', text: 'แนะนำฟีเจอร์' },
+            contents: [
+              { type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm',
+                contents: [
+                  { type: 'text', text: '💡', flex: 0, size: 'xl' },
+                  { type: 'box', layout: 'vertical', flex: 1,
+                    contents: [
+                      { type: 'text', text: 'แนะนำฟีเจอร์', size: 'sm', weight: 'bold', color: '#111111' },
+                      { type: 'text', text: 'อยากให้เพิ่มความสามารถ', size: 'xs', color: '#6b7280' },
+                    ]},
+                  { type: 'text', text: '›', size: 'lg', color: '#d1d5db', flex: 0 },
+                ]},
+            ]},
+          { type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '12px', margin: 'sm',
+            action: { type: 'message', label: 'สอบถามแผน', text: 'สอบถามแผนและราคา' },
+            contents: [
+              { type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm',
+                contents: [
+                  { type: 'text', text: '💳', flex: 0, size: 'xl' },
+                  { type: 'box', layout: 'vertical', flex: 1,
+                    contents: [
+                      { type: 'text', text: 'สอบถามแผนและราคา', size: 'sm', weight: 'bold', color: '#111111' },
+                      { type: 'text', text: 'Free / Personal / Business', size: 'xs', color: '#6b7280' },
+                    ]},
+                  { type: 'text', text: '›', size: 'lg', color: '#d1d5db', flex: 0 },
+                ]},
+            ]},
+          { type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '12px', margin: 'sm',
+            action: { type: 'message', label: 'อื่นๆ', text: 'อื่นๆ' },
+            contents: [
+              { type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm',
+                contents: [
+                  { type: 'text', text: '❓', flex: 0, size: 'xl' },
+                  { type: 'box', layout: 'vertical', flex: 1,
+                    contents: [
+                      { type: 'text', text: 'อื่นๆ', size: 'sm', weight: 'bold', color: '#111111' },
+                      { type: 'text', text: 'ติดต่อทีมงานโดยตรง', size: 'xs', color: '#6b7280' },
+                    ]},
+                  { type: 'text', text: '›', size: 'lg', color: '#d1d5db', flex: 0 },
+                ]},
+            ]},
         ],
       },
     },
