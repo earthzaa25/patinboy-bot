@@ -189,7 +189,7 @@ function flexMenu() {
             contents: [
               { type: 'text', text: '🗓', size: 'xl', flex: 0 },
               { type: 'box', layout: 'vertical', flex: 1, contents: [
-                { type: 'text', text: 'ดูกำหนดการวันนี้', size: 'sm', weight: 'bold', color: '#111' },
+                { type: 'text', text: 'ดูกำหนดการวันนี้', size: 'sm', weight: 'bold', color: '#111111' },
                 { type: 'text', text: 'นัดหมายทั้งหมดของวันนี้', size: 'xs', color: '#9ca3af' },
               ]},
               { type: 'text', text: '›', size: 'lg', color: '#d1d5db' },
@@ -200,7 +200,7 @@ function flexMenu() {
             contents: [
               { type: 'text', text: '➕', size: 'xl', flex: 0 },
               { type: 'box', layout: 'vertical', flex: 1, contents: [
-                { type: 'text', text: 'เพิ่มนัดหมายใหม่', size: 'sm', weight: 'bold', color: '#111' },
+                { type: 'text', text: 'เพิ่มนัดหมายใหม่', size: 'sm', weight: 'bold', color: '#111111' },
                 { type: 'text', text: 'บอกได้เลย เช่น "พรุ่งนี้ บ่ายโมง ประชุม"', size: 'xs', color: '#9ca3af', wrap: true },
               ]},
               { type: 'text', text: '›', size: 'lg', color: '#d1d5db' },
@@ -220,11 +220,11 @@ function flexSaveConfirm(title, date, time) {
           { type: 'text', text: '✅ บันทึกนัดหมายแล้ว!', size: 'md', weight: 'bold', color: '#06C755' },
           { type: 'separator' },
           { type: 'box', layout: 'horizontal', spacing: 'sm',
-            contents: [{ type: 'text', text: '📋', flex: 0, size: 'sm' }, { type: 'text', text: title, weight: 'bold', flex: 1, wrap: true, size: 'sm', color: '#111' }]},
+            contents: [{ type: 'text', text: '📋', flex: 0, size: 'sm' }, { type: 'text', text: title, weight: 'bold', flex: 1, wrap: true, size: 'sm', color: '#111111' }]},
           { type: 'box', layout: 'horizontal', spacing: 'sm',
-            contents: [{ type: 'text', text: '📅', flex: 0, size: 'sm' }, { type: 'text', text: date, flex: 1, size: 'sm', color: '#555' }]},
+            contents: [{ type: 'text', text: '📅', flex: 0, size: 'sm' }, { type: 'text', text: date, flex: 1, size: 'sm', color: '#555555' }]},
           { type: 'box', layout: 'horizontal', spacing: 'sm',
-            contents: [{ type: 'text', text: '⏰', flex: 0, size: 'sm' }, { type: 'text', text: time, flex: 1, size: 'sm', color: '#555' }]},
+            contents: [{ type: 'text', text: '⏰', flex: 0, size: 'sm' }, { type: 'text', text: time, flex: 1, size: 'sm', color: '#555555' }]},
         ]},
       footer: { type: 'box', layout: 'horizontal', spacing: 'sm', paddingAll: '12px',
         contents: [
