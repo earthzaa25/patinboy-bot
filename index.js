@@ -97,8 +97,10 @@ async function handleEvent(event) {
 
   if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
   if (msg === 'เมนู') return reply(event, [flexMenu()]);
+  if (msg === 'เพิ่มนัด') return reply(event, [{ type: 'text', text: '📅 บอกนัดหมายได้เลยครับ\n\nเช่น:\n• พรุ่งนี้ บ่ายโมง ประชุมทีม\n• 15/3 14:00 นัดหมอ\n• วันนี้ 3 ทุ่ม กินข้าว' }]);
+  if (msg === 'ติดต่อเรา') return reply(event, [{ type: 'text', text: '💬 ติดต่อทีมงานได้เลยครับ\n\nLINE: @patinboy\nหรือส่งข้อความมาได้เลยครับ 😊' }]);
   if (msg === 'กำหนดการ' || msg === 'ดูนัดหมาย') return reply(event, [flexSchedule(await getTodayAppointments(userId))]);
-  if (msg === 'นัดหมายทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
+  if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
   if (msg === 'ลบนัดหมาย') {
     const apts = await getTodayAppointments(userId);
     if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายวันนี้ครับ 😊' }]);
