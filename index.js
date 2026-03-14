@@ -514,11 +514,9 @@ function flexAllSchedule(appointments) {
 
     // Group header
     items.push({
-      type: 'box', layout: 'vertical', margin: items.length > 0 ? 'md' : 'none',
-      contents: [{
-        type: 'text', text: `${dayName}ที่ ${day} ${month}`,
-        size: 'xs', weight: 'bold', color: color,
-      }],
+      type: 'text', text: `${dayName}ที่ ${day} ${month}`,
+      size: 'xs', weight: 'bold', color: color,
+      margin: items.length > 0 ? 'md' : 'none',
     });
 
     // Appointments in this group
