@@ -521,20 +521,14 @@ function flexAllSchedule(appointments) {
 
     // Appointments in this group
     for (const apt of apts) {
-      const isOrange = apt.start_time.slice(0,5) < new Date().toTimeString().slice(0,5) && date === new Date().toISOString().slice(0,10);
       items.push({
-        type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '8px',
-        paddingAll: '10px', margin: 'xs', spacing: 'sm', alignItems: 'center',
+        type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '8px',
+        paddingAll: '10px', margin: 'xs',
         contents: [
-          { type: 'box', layout: 'vertical', flex: 0, width: '4px', height: '32px', backgroundColor: color, cornerRadius: '2px' },
-          { type: 'box', layout: 'vertical', flex: 1, paddingStart: '8px',
-            contents: [
-              { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
-              apt.location
-                ? { type: 'text', text: `⏰ ${apt.start_time.slice(0,5)}  📍 ${apt.location}`, size: 'xs', color: '#6b7280', margin: 'xs' }
-                : { type: 'text', text: `⏰ ${apt.start_time.slice(0,5)}`, size: 'xs', color: '#6b7280', margin: 'xs' },
-            ],
-          },
+          { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
+          { type: 'text',
+            text: apt.location ? `⏰ ${apt.start_time.slice(0,5)}  📍 ${apt.location}` : `⏰ ${apt.start_time.slice(0,5)}`,
+            size: 'xs', color: '#6b7280', margin: 'xs' },
         ],
       });
     }
