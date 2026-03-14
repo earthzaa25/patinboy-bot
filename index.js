@@ -2,7 +2,7 @@ if (process.env.NODE_ENV !== 'production') require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
 const { createClient } = require('@supabase/supabase-js');
-const cron = require('node-cron');
+
 
 const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET,
@@ -35,21 +35,28 @@ function formatDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-cron.schedule('* * * * *', async () => {
-  const now = new Date();
-  const todayStr = formatDate(now);
-  const target = new Date(now.getTime() + 30 * 60 * 1000);
-  const targetTime = `${String(target.getHours()).padStart(2,'0')}:${String(target.getMinutes()).padStart(2,'0')}:00`;
-  const { data, error } = await supabase.from('appointments').select('*')
-    .eq('meeting_date', todayStr).eq('start_time', targetTime).eq('reminded', false);
-  if (error || !data || data.length === 0) return;
-  for (const apt of data) {
-    try {
-      await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt)] });
-      await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
-    } catch (err) { console.error('Push error:', err.message); }
-  }
-});
+// ── แจ้งเตือนอัตโนมัติทุก 1 นาที (ใช้ setInterval แทน node-cron) ──
+async function checkReminders() {
+  try {
+    const now = new Date();
+    const todayStr = formatDate(now);
+    const target = new Date(now.getTime() + 30 * 60 * 1000);
+    const targetTime = `${String(target.getHours()).padStart(2,'0')}:${String(target.getMinutes()).padStart(2,'0')}:00`;
+    console.log(`🔔 เช็คแจ้งเตือน: ${todayStr} ${targetTime}`);
+    const { data, error } = await supabase.from('appointments').select('*')
+      .eq('meeting_date', todayStr).eq('start_time', targetTime).eq('reminded', false);
+    if (error) { console.error('Reminder query error:', error); return; }
+    if (!data || data.length === 0) return;
+    for (const apt of data) {
+      try {
+        await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt)] });
+        await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
+        console.log(`✅ แจ้งเตือน: ${apt.title} → ${apt.user_id}`);
+      } catch (err) { console.error('Push error:', err.message); }
+    }
+  } catch (err) { console.error('checkReminders error:', err); }
+}
+setInterval(checkReminders, 60 * 1000);
 
 async function parseAppointmentWithClaude(text) {
   const today = new Date();
