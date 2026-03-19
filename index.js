@@ -65,20 +65,76 @@ async function parseAppointmentWithClaude(text) {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = formatDate(tomorrow);
-  const prompt = `วันนี้คือ ${todayStr} พรุ่งนี้คือ ${tomorrowStr}
-ข้อความ: "${text}"
-ตอบเฉพาะ JSON เท่านั้น:
+
+  const systemPrompt = `คุณเป็น AI ผู้ช่วยวิเคราะห์ข้อความนัดหมายภาษาไทย
+วันนี้คือ ${todayStr} พรุ่งนี้คือ ${tomorrowStr}
+
+กฎการแปลงเวลา:
+- 0700, 700 = 07:00 (7 โมงเช้า)
+- 0800, 800 = 08:00 (8 โมงเช้า)
+- 0900, 900 = 09:00 (9 โมงเช้า)
+- 1000 = 10:00, 1100 = 11:00, 1200 = 12:00
+- 1300 = 13:00, 1400 = 14:00, 1500 = 15:00
+- 1600 = 16:00, 1700 = 17:00, 1800 = 18:00
+- 1900 = 19:00, 2000 = 20:00, 2100 = 21:00
+- 2200 = 22:00, 2300 = 23:00
+- ถ้าเห็น HH:MM ให้เก็บตรงๆ ห้ามปัดเวลา เช่น 14:35 = 14:35
+- เที่ยง, 12:00 = 12:00
+- เที่ยงคืน, ตี12 = 00:00
+- บ่ายโมง, บ่าย1 = 13:00
+- บ่ายโมงครึ่ง = 13:30
+- บ่ายสอง, บ่าย2 = 14:00
+- บ่ายสองครึ่ง = 14:30
+- บ่ายสาม, บ่าย3 = 15:00
+- บ่ายสี่, บ่าย4 = 16:00
+- บ่ายห้า, บ่าย5 = 17:00
+- หกโมงเย็น, 6โมงเย็น = 18:00
+- ทุ่มหนึ่ง, หนึ่งทุ่ม, 1ทุ่ม = 19:00
+- สองทุ่ม, 2ทุ่ม = 20:00
+- สามทุ่ม, 3ทุ่ม = 21:00
+- สี่ทุ่ม, 4ทุ่ม = 22:00
+- ห้าทุ่ม, 5ทุ่ม = 23:00
+- ตีหนึ่ง, ตี1 = 01:00
+- ตีสอง, ตี2 = 02:00
+- ตีสาม, ตี3 = 03:00
+- 3pm, 3PM = 15:00
+- 9am, 9AM = 09:00
+- 10am = 10:00, 2pm = 14:00
+
+กฎการแปลงวัน:
+- วันนี้ = ${todayStr}
+- พรุ่งนี้ = ${tomorrowStr}
+- มะรืน = วันหลังพรุ่งนี้
+- อาทิตย์หน้า, สัปดาห์หน้า = 7 วันข้างหน้า
+- วันจันทร์ถัดไป, จันทร์หน้า = จันทร์ถัดไป
+- ต้นเดือนหน้า = วันที่ 1 เดือนหน้า
+- DD/MM หรือ DD/MM/YYYY = แปลงเป็น YYYY-MM-DD
+
+คำย่อที่รู้จัก:
+- ปท, ประชุม, meeting, mtg = ชื่อนัด
+- นพ, หมอ, doctor = นัดหมอ
+- รพ = โรงพยาบาล
+- ออฟฟิศ, office = ที่ทำงาน
+
+ตอบเฉพาะ JSON เท่านั้น ไม่มีคำอธิบาย:
 {"isAppointment":true/false,"title":"ชื่อนัดหมาย","date":"YYYY-MM-DD หรือ null","time":"HH:MM หรือ null","location":"สถานที่ หรือ null"}
-กฎ: วันนี้=${todayStr}, พรุ่งนี้=${tomorrowStr}, บ่ายโมง=13:00, บ่ายสอง=14:00, บ่ายสาม=15:00, บ่ายสี่=16:00, บ่ายห้า=17:00, ทุ่มหนึ่ง=19:00, สองทุ่ม=20:00, สามทุ่ม=21:00, เที่ยง=12:00, ถ้าเห็นตัวเลขเวลาเช่น 14:12 หรือ 1412 ให้เก็บเป็น HH:MM ตามที่เห็นจริงๆ ห้ามปัดเวลา, ถ้าไม่เกี่ยวกับนัดหมายให้ isAppointment=false`;
+
+ถ้าไม่เกี่ยวกับนัดหมายเลย ให้ isAppointment=false`;
+
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: `ข้อความ: "${text}"` }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
+      }),
     });
     const data = await res.json();
-    return JSON.parse(data.content[0].text.trim().replace(/```json|```/g, '').trim());
-  } catch (err) { console.error('Claude API error:', err); return null; }
+    const content = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    return JSON.parse(content);
+  } catch (err) { console.error('Gemini API error:', err); return null; }
 }
 
 const userState = {};
@@ -319,8 +375,21 @@ function navItem(icon, title, subtitle, action) {
   };
 }
 
+// ── สร้าง Add to Calendar URLs ──
+function makeCalendarUrls(title, date, time) {
+  const startStr = `${date.replace(/-/g, '')}T${time.replace(':', '')}00`;
+  const endDate = new Date(`${date}T${time}:00`);
+  endDate.setHours(endDate.getHours() + 1);
+  const endStr = `${formatDate(endDate).replace(/-/g, '')}T${String(endDate.getHours()).padStart(2,'0')}${String(endDate.getMinutes()).padStart(2,'0')}00`;
+  const encodedTitle = encodeURIComponent(title);
+  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodedTitle}&dates=${startStr}/${endStr}`;
+  const outlook = `https://outlook.live.com/calendar/0/action/compose?subject=${encodedTitle}&startdt=${date}T${time}:00&enddt=${formatDate(endDate)}T${String(endDate.getHours()).padStart(2,'0')}:${String(endDate.getMinutes()).padStart(2,'0')}:00`;
+  return { google, outlook };
+}
+
 // ── FLEX: Save Confirm ──
 function flexSaveConfirm(title, date, time, headerText = '✅ บันทึกนัดหมายแล้ว!') {
+  const { google, outlook } = makeCalendarUrls(title, date, time);
   return {
     type: 'flex', altText: `✅ ${title}`,
     contents: {
@@ -332,7 +401,7 @@ function flexSaveConfirm(title, date, time, headerText = '✅ บันทึก
         ],
       },
       body: {
-        type: 'box', layout: 'vertical', paddingAll: '16px',
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
         contents: [
           { type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '14px', spacing: 'sm',
             contents: [
@@ -351,6 +420,15 @@ function flexSaveConfirm(title, date, time, headerText = '✅ บันทึก
                   { type: 'text', text: '⏰', flex: 0, size: 'sm' },
                   { type: 'text', text: time, flex: 1, size: 'sm', color: '#6b7280' },
                 ]},
+            ],
+          },
+          { type: 'text', text: 'เพิ่มใน Calendar ของคุณ', size: 'xs', color: '#9ca3af', align: 'center', margin: 'sm' },
+          { type: 'box', layout: 'horizontal', spacing: 'sm',
+            contents: [
+              { type: 'button', style: 'primary', color: '#4285f4', height: 'sm', flex: 1,
+                action: { type: 'uri', label: '📅 Google', uri: google } },
+              { type: 'button', style: 'primary', color: '#0078d4', height: 'sm', flex: 1,
+                action: { type: 'uri', label: '📘 Outlook', uri: outlook } },
             ],
           },
         ],
