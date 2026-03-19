@@ -122,20 +122,24 @@ async function parseAppointmentWithClaude(text) {
 ถ้าไม่เกี่ยวกับนัดหมายเลย ให้ isAppointment=false`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `ข้อความ: "${text}"` }],
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: `ข้อความ: "${text}"` }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
       }),
     });
     const data = await res.json();
-    const content = data.content[0].text.trim().replace(/```json|```/g, '').trim();
+    console.log('Gemini response:', JSON.stringify(data).slice(0, 200));
+    if (!data.candidates || !data.candidates[0]) {
+      console.error('Gemini error:', JSON.stringify(data).slice(0, 300));
+      return null;
+    }
+    const content = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
     return JSON.parse(content);
-  } catch (err) { console.error('Claude API error:', err); return null; }
+  } catch (err) { console.error('Gemini API error:', err); return null; }
 }
 
 const userState = {};
