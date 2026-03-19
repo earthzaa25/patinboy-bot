@@ -132,6 +132,11 @@ async function parseAppointmentWithClaude(text) {
       }),
     });
     const data = await res.json();
+    console.log('Gemini response:', JSON.stringify(data).slice(0, 300));
+    if (!data.candidates || !data.candidates[0]) {
+      console.error('Gemini no candidates:', JSON.stringify(data));
+      return null;
+    }
     const content = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
     return JSON.parse(content);
   } catch (err) { console.error('Gemini API error:', err); return null; }
