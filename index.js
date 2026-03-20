@@ -263,6 +263,24 @@ async function handleEvent(event) {
   if (msg === 'เมนู') return reply(event, [await flexMenu(userId)]);
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
   if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
+  if (msg === 'ทีม' || msg === 'จัดการทีม') return await handleTeam(event, userId);
+  if (msg === 'สร้างทีม') {
+    const plan = await getUserPlan(userId);
+    if (!canUseBusiness(plan)) return reply(event, [{ type: 'text', text: '🔒 สำหรับ Business Plan เท่านั้นครับ' }]);
+    userState[userId] = { step: 'creatingTeam' };
+    return reply(event, [{ type: 'text', text: '👥 ตั้งชื่อทีมได้เลยครับ\n\nเช่น: ทีมขาย, ทีม HR, ออฟฟิศ A' }]);
+  }
+  if (msg.startsWith('เชิญสมาชิก:')) {
+    const teamId = msg.replace('เชิญสมาชิก:', '');
+    userState[userId] = { step: 'invitingMember', teamId };
+    return reply(event, [{ type: 'text', text: '📲 พิมพ์ LINE User ID ของสมาชิกที่ต้องการเชิญครับ\n\n(User ID จะขึ้นต้นด้วย U เช่น U6b7b659...)' }]);
+  }
+  if (msg.startsWith('ดูสมาชิก:')) {
+    const teamId = msg.replace('ดูสมาชิก:', '');
+    const { data: members } = await supabase.from('team_members').select('*').eq('team_id', teamId);
+    const list = members?.map((m, i) => `${i+1}. ${m.line_user_id.slice(0,12)}... (${m.role})`).join('\n') || 'ยังไม่มีสมาชิก';
+    return reply(event, [{ type: 'text', text: `👥 สมาชิกในทีม\n\n${list}` }]);
+  }
   if (msg === 'แจ้งปัญหาการใช้งาน' || msg === 'แนะนำฟีเจอร์' || msg === 'สอบถามแผนและราคา' || msg === 'อื่นๆ') {
     return reply(event, [{ type: 'text', text: `✅ รับเรื่องแล้วครับ!
 
@@ -349,6 +367,31 @@ async function handleState(event, userId, msg) {
     const mins = parseInt(msg.replace('แจ้งเตือน', ''));
     delete userState[userId];
     return await handleSetReminder(event, userId, state.aptId, mins);
+  }
+
+  if (state.step === 'creatingTeam') {
+    const teamName = msg.trim();
+    if (!teamName) return reply(event, [{ type: 'text', text: '❌ กรุณาพิมพ์ชื่อทีมครับ' }]);
+    const { error } = await supabase.from('teams').insert({ name: teamName, owner_line_id: userId });
+    delete userState[userId];
+    if (error) return reply(event, [{ type: 'text', text: '❌ สร้างทีมไม่สำเร็จครับ' }]);
+    return reply(event, [{ type: 'text', text: `✅ สร้างทีม "${teamName}" สำเร็จแล้วครับ!\n\nพิมพ์ "จัดการทีม" เพื่อเชิญสมาชิก`, quickReply: { items: [
+      { type: 'action', action: { type: 'message', label: '👥 จัดการทีม', text: 'จัดการทีม' } },
+    ]}}]);
+  }
+
+  if (state.step === 'invitingMember') {
+    const inviteId = msg.trim();
+    if (!inviteId.startsWith('U')) return reply(event, [{ type: 'text', text: '❌ LINE User ID ต้องขึ้นต้นด้วย U ครับ' }]);
+    const { error } = await supabase.from('team_members').insert({ team_id: state.teamId, line_user_id: inviteId, role: 'member' });
+    delete userState[userId];
+    if (error) return reply(event, [{ type: 'text', text: '❌ เชิญไม่สำเร็จ อาจเป็นสมาชิกอยู่แล้วครับ' }]);
+    try {
+      await client.pushMessage({ to: inviteId, messages: [{ type: 'text', text: '🎉 คุณได้รับเชิญเข้าร่วมทีมใน ปฏิทินBoy แล้วครับ!\n\nพิมพ์ "จัดการทีม" เพื่อดูทีมของคุณ' }] });
+    } catch(e) {}
+    return reply(event, [{ type: 'text', text: `✅ เชิญสมาชิกสำเร็จแล้วครับ!`, quickReply: { items: [
+      { type: 'action', action: { type: 'message', label: '👥 ดูทีม', text: 'จัดการทีม' } },
+    ]}}]);
   }
 
   if (state.step === 'editing') {
@@ -1249,6 +1292,97 @@ function flexSelectReminderApt(apts) {
         contents: [{ type: 'text', text: 'เลือกนัดที่จะตั้งแจ้งเตือนครับ', size: 'md', weight: 'bold', color: '#06C755' }],
       },
       body: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: items },
+    },
+  };
+}
+
+
+// ── Team Management ──
+async function handleTeam(event, userId) {
+  const plan = await getUserPlan(userId);
+  if (!canUseBusiness(plan)) {
+    return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์จัดการทีมสำหรับ Business Plan เท่านั้นครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด' }]);
+  }
+
+  // ดึงทีมที่เป็นเจ้าของ
+  const { data: ownTeams } = await supabase.from('teams').select('*, team_members(count)').eq('owner_line_id', userId);
+  // ดึงทีมที่เป็นสมาชิก
+  const { data: memberTeams } = await supabase.from('team_members').select('team_id, teams(id, name, owner_line_id)').eq('line_user_id', userId).neq('role', 'owner');
+
+  return reply(event, [flexTeamMenu(ownTeams || [], memberTeams || [])]);
+}
+
+function flexTeamMenu(ownTeams, memberTeams) {
+  const hasTeam = ownTeams.length > 0;
+  const items = [];
+
+  if (hasTeam) {
+    for (const team of ownTeams) {
+      items.push({
+        type: 'box', layout: 'vertical', backgroundColor: '#f0fdf4', cornerRadius: '10px', paddingAll: '12px', margin: 'sm',
+        contents: [
+          { type: 'box', layout: 'horizontal', alignItems: 'center',
+            contents: [
+              { type: 'text', text: '👑', size: 'md', flex: 0 },
+              { type: 'box', layout: 'vertical', flex: 1, paddingStart: '8px',
+                contents: [
+                  { type: 'text', text: team.name, size: 'sm', weight: 'bold', color: '#14532d' },
+                  { type: 'text', text: 'เจ้าของทีม', size: 'xs', color: '#16a34a' },
+                ]},
+            ]},
+          { type: 'box', layout: 'horizontal', margin: 'sm', spacing: 'sm',
+            contents: [
+              { type: 'button', style: 'primary', color: '#06C755', height: 'sm', flex: 1,
+                action: { type: 'message', label: '+ เชิญสมาชิก', text: `เชิญสมาชิก:${team.id}` } },
+              { type: 'button', style: 'secondary', height: 'sm', flex: 1,
+                action: { type: 'message', label: '👥 ดูสมาชิก', text: `ดูสมาชิก:${team.id}` } },
+            ]},
+        ],
+      });
+    }
+  }
+
+  for (const m of memberTeams) {
+    if (!m.teams) continue;
+    items.push({
+      type: 'box', layout: 'horizontal', backgroundColor: '#f0f9ff', cornerRadius: '10px', paddingAll: '12px', margin: 'sm', alignItems: 'center',
+      contents: [
+        { type: 'text', text: '👥', size: 'md', flex: 0 },
+        { type: 'box', layout: 'vertical', flex: 1, paddingStart: '8px',
+          contents: [
+            { type: 'text', text: m.teams.name, size: 'sm', weight: 'bold', color: '#1e40af' },
+            { type: 'text', text: 'สมาชิก', size: 'xs', color: '#3b82f6' },
+          ]},
+      ],
+    });
+  }
+
+  if (items.length === 0) {
+    items.push({
+      type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '16px', margin: 'sm',
+      contents: [{ type: 'text', text: 'ยังไม่มีทีมครับ\nกด "สร้างทีม" เพื่อเริ่มต้น', size: 'sm', color: '#6b7280', align: 'center', wrap: true }],
+    });
+  }
+
+  return {
+    type: 'flex', altText: '👥 จัดการทีม',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '👥 จัดการทีม', size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: 'ทีมของฉัน', size: 'xl', weight: 'bold', color: '#ffffff' },
+        ],
+      },
+      body: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: items },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          { type: 'button', style: 'primary', color: '#8b5cf6', height: 'sm',
+            action: { type: 'message', label: '+ สร้างทีมใหม่', text: 'สร้างทีม' } },
+        ],
+      },
     },
   };
 }
