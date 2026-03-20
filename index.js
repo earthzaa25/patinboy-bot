@@ -778,38 +778,65 @@ function flexAllSchedule(appointments) {
   };
 }
 
-// ── FLEX: Select Appointment ──
+// ── FLEX: Select Appointment (Carousel — จัดกลุ่มตามวัน) ──
 function flexSelectAppointment(apts, action) {
   const isDelete = action === 'ลบ';
-  const isReminder = action === 'แจ้งเตือน';
-  const icon = isDelete ? '🗑️' : isReminder ? '⏰' : '✏️';
-  const headerColor = isDelete ? '#FF6B35' : isReminder ? '#06C755' : '#06C755';
+  const icon = isDelete ? '🗑️' : '✏️';
+  const headerColor = isDelete ? '#FF6B35' : '#06C755';
+  const headerTitle = isDelete ? '🗑️ เลือกนัดที่จะลบ' : '✏️ เลือกนัดที่จะแก้ไข';
+  const dayNames = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  const monthNames = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
-  const items = apts.map(apt => ({
-    type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '10px',
-    paddingAll: '12px', margin: 'sm', alignItems: 'center',
-    action: { type: 'message', label: apt.title, text: `${action}:${apt.id}` },
-    contents: [
-      { type: 'box', layout: 'vertical', flex: 1,
+  // จัดกลุ่มตามวัน
+  const groups = {};
+  for (const apt of apts) {
+    const d = apt.meeting_date;
+    if (!groups[d]) groups[d] = [];
+    groups[d].push(apt);
+  }
+
+  // สร้าง bubble แต่ละวัน (max 12 bubbles)
+  const bubbles = Object.entries(groups).slice(0, 12).map(([date, dayApts]) => {
+    const d = new Date(date + 'T00:00:00');
+    const dayLabel = `${dayNames[d.getDay()]}ที่ ${d.getDate()} ${monthNames[d.getMonth()]}`;
+
+    const items = dayApts.map(apt => ({
+      type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '8px',
+      paddingAll: '10px', margin: 'xs', alignItems: 'center',
+      action: { type: 'message', label: apt.title, text: `${action}:${apt.id}` },
+      contents: [
+        { type: 'box', layout: 'vertical', flex: 1,
+          contents: [
+            { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
+            { type: 'text', text: `⏰ ${apt.start_time.slice(0,5)}${apt.location ? '  📍 ' + apt.location : ''}`, size: 'xs', color: '#6b7280', margin: 'xs' },
+          ],
+        },
+        { type: 'text', text: icon, size: 'md', flex: 0 },
+      ],
+    }));
+
+    return {
+      type: 'bubble', size: 'kilo',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '12px',
         contents: [
-          { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
-          { type: 'text', text: `${apt.meeting_date} ${apt.start_time.slice(0,5)}`, size: 'xs', color: '#6b7280' },
+          { type: 'text', text: headerTitle, size: 'xxs', color: '#94a3b8' },
+          { type: 'text', text: dayLabel, size: 'sm', weight: 'bold', color: headerColor },
         ],
       },
-      { type: 'text', text: icon, size: 'lg', flex: 0 },
-    ],
-  }));
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', contents: items },
+    };
+  });
 
+  // ถ้ามีแค่วันเดียว ส่งเป็น bubble เดี่ยว
+  if (bubbles.length === 1) {
+    return { type: 'flex', altText: `เลือกนัดที่จะ${action}`, contents: bubbles[0] };
+  }
+
+  // ถ้าหลายวัน ส่งเป็น carousel
   return {
     type: 'flex', altText: `เลือกนัดที่จะ${action}`,
-    contents: {
-      type: 'bubble',
-      header: {
-        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
-        contents: [{ type: 'text', text: `เลือกนัดที่จะ${action}ครับ`, size: 'md', weight: 'bold', color: headerColor }],
-      },
-      body: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: items },
-    },
+    contents: { type: 'carousel', contents: bubbles },
   };
 }
 
