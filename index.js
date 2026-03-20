@@ -260,7 +260,7 @@ async function handleEvent(event) {
     const planName = msg.includes('Personal') ? 'Personal ฿30/เดือน' : 'Business ฿199/เดือน';
     return reply(event, [{ type: 'text', text: `💳 อัปเกรด ${planName}\n\nโอนเงินมาที่:\nธนาคาร: กสิกรไทย\nเลขบัญชี: xxx-x-xxxxx-x\nชื่อ: ปฏิทินBoy\n\nแล้วส่งสลิปมาที่นี่เลยครับ ทีมงานจะอัปเกรดให้ภายใน 30 นาทีครับ 😊` }]);
   }
-  if (msg === 'เมนู') return reply(event, [flexMenu()]);
+  if (msg === 'เมนู') return reply(event, [await flexMenu(userId)]);
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
   if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
   if (msg === 'แจ้งปัญหาการใช้งาน' || msg === 'แนะนำฟีเจอร์' || msg === 'สอบถามแผนและราคา' || msg === 'อื่นๆ') {
@@ -282,6 +282,16 @@ async function handleEvent(event) {
     if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
     userState[userId] = { step: 'selectReminder', apts };
     return reply(event, [flexSelectReminderApt(apts)]);
+  }
+  if (msg === 'จัดการนัด') {
+    return reply(event, [{
+      type: 'text', text: '📋 จัดการนัดหมาย\n\nเลือกสิ่งที่ต้องการทำครับ',
+      quickReply: { items: [
+        { type: 'action', action: { type: 'message', label: '✏️ แก้ไขนัด', text: 'แก้ไขนัดหมาย' } },
+        { type: 'action', action: { type: 'message', label: '🗑️ ลบนัด', text: 'ลบนัดหมาย' } },
+        { type: 'action', action: { type: 'message', label: '⏰ แจ้งเตือน', text: 'ตั้งแจ้งเตือน' } },
+      ]},
+    }]);
   }
   if (msg === 'ลบนัดหมาย') {
     const apts = await getAllAppointments(userId);
@@ -453,7 +463,40 @@ function flexWelcome() {
 }
 
 // ── FLEX: Menu ──
-function flexMenu() {
+async function flexMenu(userId) {
+  const plan = userId ? await getUserPlan(userId) : 'free';
+  const planLabel = plan === 'business' ? 'BUSINESS' : plan === 'personal' ? 'PERSONAL' : 'FREE';
+  const planColor = plan === 'business' ? '#a78bfa' : plan === 'personal' ? '#93c5fd' : '#94a3b8';
+  const planBg = plan === 'business' ? 'rgba(139,92,246,0.25)' : plan === 'personal' ? 'rgba(59,130,246,0.25)' : 'rgba(148,163,184,0.2)';
+  const isPremium = canUsePremium(plan);
+  const isBusiness = canUseBusiness(plan);
+
+  const lockBadge = (color) => ({
+    type: 'box', layout: 'vertical', flex: 0, paddingAll: '3px', paddingStart: '6px', paddingEnd: '6px',
+    backgroundColor: color === 'blue' ? '#dbeafe' : '#ede9fe', cornerRadius: '20px',
+    contents: [{ type: 'text', text: '🔒', size: 'xxs', color: color === 'blue' ? '#2563eb' : '#7c3aed' }],
+  });
+
+  const menuRow = (icon, title, subtitle, action, locked = false, lockColor = 'blue', highlight = null) => ({
+    type: 'box', layout: 'horizontal',
+    backgroundColor: locked ? '#f8fafc' : highlight === 'blue' ? '#eff6ff' : highlight === 'purple' ? '#f5f3ff' : '#f8fafc',
+    cornerRadius: '10px', paddingAll: '11px', margin: 'xs', alignItems: 'center',
+    action: locked ? undefined : { type: 'message', label: title, text: action },
+    opacity: locked ? '0.45' : undefined,
+    contents: [
+      { type: 'text', text: icon, size: 'md', flex: 0, margin: 'none' },
+      { type: 'box', layout: 'vertical', flex: 1, paddingStart: '10px',
+        contents: [
+          { type: 'text', text: title, size: 'sm', weight: 'bold', color: locked ? '#0f172a' : highlight === 'blue' ? '#1e40af' : highlight === 'purple' ? '#5b21b6' : '#0f172a' },
+          { type: 'text', text: subtitle, size: 'xxs', color: locked ? '#64748b' : highlight === 'blue' ? '#3b82f6' : highlight === 'purple' ? '#8b5cf6' : '#64748b', margin: 'xs' },
+        ],
+      },
+      locked ? lockBadge(lockColor) : { type: 'text', text: '›', size: 'lg', color: '#cbd5e1', flex: 0 },
+    ],
+  });
+
+  const separator = { type: 'box', layout: 'vertical', height: '1px', backgroundColor: '#e2e8f0', margin: 'sm' };
+
   return {
     type: 'flex', altText: 'ปฏิทินBoy เมนูหลัก',
     contents: {
@@ -462,24 +505,28 @@ function flexMenu() {
         type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
         contents: [
           { type: 'text', text: '📅 ปฏิทินBoy', size: 'xs', color: '#94a3b8' },
-          { type: 'text', text: 'เมนูหลัก', size: 'xl', weight: 'bold', color: '#ffffff' },
+          { type: 'text', text: 'เมนูหลัก', size: 'xl', weight: 'bold', color: '#ffffff', margin: 'xs' },
+          { type: 'box', layout: 'vertical', backgroundColor: planBg, cornerRadius: '20px', paddingAll: '3px', paddingStart: '10px', paddingEnd: '10px', margin: 'sm', alignSelf: 'flex-start',
+            contents: [{ type: 'text', text: planLabel, size: 'xxs', color: planColor, weight: 'bold' }] },
         ],
       },
       body: {
-        type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+        type: 'box', layout: 'vertical', paddingAll: '12px',
         contents: [
-          navItem('🗓', 'ดูกำหนดการวันนี้', 'นัดหมายทั้งหมดของวันนี้', 'กำหนดการ'),
-          navItem('📆', 'นัดหมายทั้งหมด', 'ดูนัดที่กำลังจะมาถึง', 'นัดหมายทั้งหมด'),
-          navItem('✏️', 'แก้ไขนัดหมาย', 'แก้ไขนัดหมายวันนี้', 'แก้ไขนัดหมาย'),
-          navItem('🗑️', 'ลบนัดหมาย', 'ลบนัดหมายวันนี้', 'ลบนัดหมาย'),
-          navItem('⏰', 'ตั้งแจ้งเตือน', 'Personal+ เลือกเวลาแจ้งเตือนเอง', 'ตั้งแจ้งเตือน'),
-          navItem('💳', 'แพลนของฉัน', 'ดู plan และอัปเกรด', 'แพลน'),
+          menuRow('🗓', 'กำหนดการวันนี้', 'นัดหมายของวันนี้', 'กำหนดการ'),
+          menuRow('📆', 'นัดหมายทั้งหมด', 'ดูนัดทั้งเดือน', 'นัดหมายทั้งหมด'),
+          menuRow('📋', 'จัดการนัด', isPremium ? 'แก้ไข / ลบ / แจ้งเตือน' : 'แก้ไข / ลบ', 'จัดการนัด'),
+          menuRow('📤', 'Export PDF/Excel', isPremium ? 'Personal' : 'Personal+', isPremium ? 'export' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
+          menuRow('🔁', 'นัดซ้ำประจำ', isPremium ? 'Personal' : 'Personal+', isPremium ? 'นัดซ้ำ' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
+          menuRow('👥', 'จัดการทีม', isBusiness ? 'Business' : 'Business', isBusiness ? 'ทีม' : '', !isBusiness, 'purple', isBusiness ? 'purple' : null),
+          separator,
+          menuRow('💳', 'แพลนของฉัน', `${planLabel} · ${plan === 'business' ? '฿199/เดือน' : plan === 'personal' ? '฿30/เดือน' : 'ฟรีตลอด'}`, 'แพลน'),
         ],
       },
       footer: {
         type: 'box', layout: 'vertical', paddingAll: '12px',
         contents: [
-          { type: 'button', style: 'primary', color: '#06C755', height: 'sm', action: { type: 'message', label: '➕ เพิ่มนัดหมายใหม่', text: 'เพิ่มนัด' } },
+          { type: 'button', style: 'primary', color: '#06C755', height: 'sm', action: { type: 'message', label: '+ เพิ่มนัดหมายใหม่', text: 'เพิ่มนัด' } },
         ],
       },
     },
