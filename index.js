@@ -274,17 +274,21 @@ async function handleEvent(event) {
     userState[userId] = { step: 'creatingTeam' };
     return reply(event, [{ type: 'text', text: '👥 ตั้งชื่อทีมได้เลยครับ\n\nเช่น: ทีมขาย, ทีม HR, ออฟฟิศ A' }]);
   }
-  if (msg.startsWith('สร้างlink:')) {
-    const teamId = msg.replace('สร้างlink:', '');
-    const { data: team } = await supabase.from('teams').select('name').eq('id', teamId).single();
-    const code = await createInviteLink(teamId, userId);
-    return reply(event, [{ type: 'text', text: `🔗 Link เชิญเข้าทีม "${team?.name}"\n\nส่งข้อความนี้ให้สมาชิกพิมพ์ใน ปฏิทินBoy:\n\n👉 เข้าร่วม ${code}\n\n⏰ Link หมดอายุใน 7 วันครับ` }]);
+  if (msg.startsWith('link:')) {
+    const teamName = msg.replace('link:', '');
+    const { data: team } = await supabase.from('teams').select('id, name').eq('name', teamName).eq('owner_line_id', userId).single();
+    if (!team) return reply(event, [{ type: 'text', text: '❌ ไม่พบทีมครับ' }]);
+    const code = await createInviteLink(team.id, userId);
+    return reply(event, [{ type: 'text', text: `🔗 Link เชิญเข้าทีม "${team.name}"\n\nส่งข้อความนี้ให้สมาชิกพิมพ์ใน ปฏิทินBoy:\n\n👉 เข้าร่วม ${code}\n\n⏰ หมดอายุใน 7 วันครับ` }]);
   }
-  if (msg.startsWith('ดูสมาชิก:')) {
-    const teamId = msg.replace('ดูสมาชิก:', '');
-    const { data: members } = await supabase.from('team_members').select('*').eq('team_id', teamId);
-    const list = members?.map((m, i) => `${i+1}. ${m.line_user_id.slice(0,12)}... (${m.role})`).join('\n') || 'ยังไม่มีสมาชิก';
-    return reply(event, [{ type: 'text', text: `👥 สมาชิกในทีม\n\n${list}` }]);
+  if (msg.startsWith('สมาชิก:')) {
+    const teamName = msg.replace('สมาชิก:', '');
+    const { data: team } = await supabase.from('teams').select('id').eq('name', teamName).eq('owner_line_id', userId).single();
+    if (!team) return reply(event, [{ type: 'text', text: '❌ ไม่พบทีมครับ' }]);
+    const { data: members } = await supabase.from('team_members').select('*').eq('team_id', team.id);
+    const count = members?.length || 0;
+    const list = count > 0 ? members.map((m, i) => `${i+1}. สมาชิก (${m.role})`).join('\n') : 'ยังไม่มีสมาชิกครับ';
+    return reply(event, [{ type: 'text', text: `👥 สมาชิกทีม "${teamName}"\n\n${list}\n\nรวม ${count} คนครับ` }]);
   }
   if (msg === 'แจ้งปัญหาการใช้งาน' || msg === 'แนะนำฟีเจอร์' || msg === 'สอบถามแผนและราคา' || msg === 'อื่นๆ') {
     return reply(event, [{ type: 'text', text: `✅ รับเรื่องแล้วครับ!
@@ -1324,9 +1328,9 @@ function flexTeamMenu(ownTeams, memberTeams) {
           { type: 'box', layout: 'horizontal', margin: 'sm', spacing: 'sm',
             contents: [
               { type: 'button', style: 'primary', color: '#06C755', height: 'sm', flex: 1,
-                action: { type: 'message', label: '🔗 Link เชิญ', text: `สร้างlink:${team.id}` } },
+                action: { type: 'message', label: '🔗 Link เชิญ', text: `link:${team.name}` } },
               { type: 'button', style: 'secondary', height: 'sm', flex: 1,
-                action: { type: 'message', label: '👥 ดูสมาชิก', text: `ดูสมาชิก:${team.id}` } },
+                action: { type: 'message', label: '👥 ดูสมาชิก', text: `สมาชิก:${team.name}` } },
             ]},
         ],
       });
