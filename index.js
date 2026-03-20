@@ -494,7 +494,7 @@ async function flexMenu(userId) {
     ],
   });
 
-  const separator = { type: 'box', layout: 'vertical', height: '1px', backgroundColor: '#e2e8f0', margin: 'sm' };
+  const separator = { type: 'separator', margin: 'sm' };
 
   return {
     type: 'flex', altText: 'ปฏิทินBoy เมนูหลัก',
