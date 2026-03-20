@@ -213,9 +213,14 @@ async function handleEvent(event) {
     delete userState[userId];
     return await deleteAppointment(event, userId, msg.replace('ลบ:', ''));
   }
-  if (msg.startsWith('setreminder:')) {
-    const parts = msg.split(':');
-    return await handleSetReminder(event, userId, parts[1], parseInt(parts[2]));
+  if (/^แจ้งเตือน\d+$/.test(msg)) {
+    const mins = parseInt(msg.replace('แจ้งเตือน', ''));
+    const state = userState[userId];
+    if (state && state.step === 'selectReminder' && state.aptId) {
+      delete userState[userId];
+      return await handleSetReminder(event, userId, state.aptId, mins);
+    }
+    return reply(event, [{ type: 'text', text: '❌ เกิดข้อผิดพลาดครับ ลองใหม่อีกครั้งนะครับ' }]);
   }
   if (msg.startsWith('แก้ไข:')) {
     delete userState[userId];
@@ -264,6 +269,7 @@ async function handleEvent(event) {
     const aptId = msg.replace('แจ้งเตือน:', '');
     const plan = await getUserPlan(userId);
     const isBusiness = canUseBusiness(plan);
+    userState[userId] = { step: 'selectReminder', aptId };
     return reply(event, [flexSetReminder(aptId, isBusiness)]);
   }
   if (msg === 'ลบนัดหมาย') {
@@ -1095,7 +1101,7 @@ function flexSetReminder(aptId, isBusiness) {
         contents: options.map(opt => ({
           type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '8px',
           paddingAll: '12px', alignItems: 'center',
-          action: { type: 'message', label: opt.label, text: `setreminder:${aptId}:${opt.mins}` },
+          action: { type: 'message', label: opt.label, text: `แจ้งเตือน${opt.mins}` },
           contents: [
             { type: 'text', text: '⏰', flex: 0, size: 'sm' },
             { type: 'text', text: opt.label, flex: 1, size: 'sm', weight: 'bold', color: '#111111', margin: 'sm' },
