@@ -479,10 +479,9 @@ async function flexMenu(userId) {
 
   const menuRow = (icon, title, subtitle, action, locked = false, lockColor = 'blue', highlight = null) => ({
     type: 'box', layout: 'horizontal',
-    backgroundColor: locked ? '#f8fafc' : highlight === 'blue' ? '#eff6ff' : highlight === 'purple' ? '#f5f3ff' : '#f8fafc',
+    backgroundColor: locked ? '#f1f5f9' : highlight === 'blue' ? '#eff6ff' : highlight === 'purple' ? '#f5f3ff' : '#f9fafb',
     cornerRadius: '10px', paddingAll: '11px', margin: 'xs', alignItems: 'center',
     action: locked ? undefined : { type: 'message', label: title, text: action },
-    opacity: locked ? '0.45' : undefined,
     contents: [
       { type: 'text', text: icon, size: 'md', flex: 0, margin: 'none' },
       { type: 'box', layout: 'vertical', flex: 1, paddingStart: '10px',
@@ -506,8 +505,8 @@ async function flexMenu(userId) {
         contents: [
           { type: 'text', text: '📅 ปฏิทินBoy', size: 'xs', color: '#94a3b8' },
           { type: 'text', text: 'เมนูหลัก', size: 'xl', weight: 'bold', color: '#ffffff', margin: 'xs' },
-          { type: 'box', layout: 'vertical', backgroundColor: planBg, cornerRadius: '20px', paddingAll: '3px', paddingStart: '10px', paddingEnd: '10px', margin: 'sm', alignSelf: 'flex-start',
-            contents: [{ type: 'text', text: planLabel, size: 'xxs', color: planColor, weight: 'bold' }] },
+          { type: 'box', layout: 'vertical', cornerRadius: '20px', paddingAll: '3px', paddingStart: '10px', paddingEnd: '10px', margin: 'sm', alignSelf: 'flex-start',
+            contents: [{ type: 'text', text: `● ${planLabel}`, size: 'xxs', color: planColor, weight: 'bold' }] },
         ],
       },
       body: {
