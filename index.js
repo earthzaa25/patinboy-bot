@@ -311,14 +311,7 @@ async function handleEvent(event) {
     return reply(event, [flexSelectReminderApt(apts)]);
   }
   if (msg === 'จัดการนัด') {
-    return reply(event, [{
-      type: 'text', text: '📋 จัดการนัดหมาย\n\nเลือกสิ่งที่ต้องการทำครับ',
-      quickReply: { items: [
-        { type: 'action', action: { type: 'message', label: '✏️ แก้ไขนัด', text: 'แก้ไขนัดหมาย' } },
-        { type: 'action', action: { type: 'message', label: '🗑️ ลบนัด', text: 'ลบนัดหมาย' } },
-        { type: 'action', action: { type: 'message', label: '⏰ แจ้งเตือน', text: 'ตั้งแจ้งเตือน' } },
-      ]},
-    }]);
+    return reply(event, [flexManageMenu()]);
   }
   if (msg === 'ลบนัดหมาย') {
     const apts = await getAllAppointments(userId);
@@ -1405,6 +1398,68 @@ async function joinTeamByCode(event, userId, code) {
   return reply(event, [{ type: 'text', text: `🎉 เข้าร่วมทีม "${invite.teams?.name}" สำเร็จแล้วครับ!`, quickReply: { items: [
     { type: 'action', action: { type: 'message', label: '👥 ดูทีม', text: 'จัดการทีม' } },
   ]}}]);
+}
+
+
+// ── FLEX: Manage Menu ──
+function flexManageMenu() {
+  return {
+    type: 'flex', altText: '📋 จัดการนัดหมาย',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '📋 ปฏิทินBoy', size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: 'จัดการนัดหมาย', size: 'xl', weight: 'bold', color: '#ffffff' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+        contents: [
+          { type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '10px', paddingAll: '14px', alignItems: 'center',
+            action: { type: 'message', label: 'แก้ไขนัด', text: 'แก้ไขนัดหมาย' },
+            contents: [
+              { type: 'text', text: '✏️', size: 'lg', flex: 0 },
+              { type: 'box', layout: 'vertical', flex: 1, paddingStart: '12px',
+                contents: [
+                  { type: 'text', text: 'แก้ไขนัดหมาย', size: 'sm', weight: 'bold', color: '#0f172a' },
+                  { type: 'text', text: 'แก้ไขชื่อ วัน เวลา สถานที่', size: 'xs', color: '#64748b', margin: 'xs' },
+                ]},
+              { type: 'text', text: '›', size: 'lg', color: '#cbd5e1', flex: 0 },
+            ]},
+          { type: 'box', layout: 'horizontal', backgroundColor: '#fff5f5', cornerRadius: '10px', paddingAll: '14px', alignItems: 'center',
+            action: { type: 'message', label: 'ลบนัด', text: 'ลบนัดหมาย' },
+            contents: [
+              { type: 'text', text: '🗑️', size: 'lg', flex: 0 },
+              { type: 'box', layout: 'vertical', flex: 1, paddingStart: '12px',
+                contents: [
+                  { type: 'text', text: 'ลบนัดหมาย', size: 'sm', weight: 'bold', color: '#ef4444' },
+                  { type: 'text', text: 'ลบนัดหมายออกจากระบบ', size: 'xs', color: '#f87171', margin: 'xs' },
+                ]},
+              { type: 'text', text: '›', size: 'lg', color: '#fca5a5', flex: 0 },
+            ]},
+          { type: 'box', layout: 'horizontal', backgroundColor: '#f0f9ff', cornerRadius: '10px', paddingAll: '14px', alignItems: 'center',
+            action: { type: 'message', label: 'ตั้งแจ้งเตือน', text: 'ตั้งแจ้งเตือน' },
+            contents: [
+              { type: 'text', text: '⏰', size: 'lg', flex: 0 },
+              { type: 'box', layout: 'vertical', flex: 1, paddingStart: '12px',
+                contents: [
+                  { type: 'text', text: 'ตั้งเวลาแจ้งเตือน', size: 'sm', weight: 'bold', color: '#1e40af' },
+                  { type: 'text', text: 'Personal+ เลือกเวลาแจ้งเตือนเอง', size: 'xs', color: '#3b82f6', margin: 'xs' },
+                ]},
+              { type: 'text', text: '›', size: 'lg', color: '#93c5fd', flex: 0 },
+            ]},
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '← กลับเมนูหลัก', text: 'เมนู' } },
+        ],
+      },
+    },
+  };
 }
 
 const PORT = process.env.PORT || 3000;
