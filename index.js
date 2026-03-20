@@ -1082,13 +1082,20 @@ async function handleSetReminder(event, userId, aptId, minutesBefore) {
 
   await supabase.from('appointments').update({ reminders, reminded: false }).eq('id', aptId);
 
-  const label = minutesBefore >= 1440 ? `${minutesBefore/1440} วันก่อน` : minutesBefore >= 60 ? `${minutesBefore/60} ชั่วโมงก่อน` : `${minutesBefore} นาทีก่อน`;
-  return reply(event, [{ type: 'text', text: `✅ ตั้งแจ้งเตือน "${apt.title}"
+  const formatMins = (m) => m >= 1440 ? `${m/1440} วันก่อน` : m >= 60 ? `${m/60} ชั่วโมงก่อน` : `${m} นาทีก่อน`;
+  const reminderList = reminders.map((r, i) => `${i+1}. ⏰ ${formatMins(r.minutes)}`).join('\n');
+  const isBusiness = canUseBusiness(plan);
 
-⏰ แจ้งเตือนก่อน ${label}`, quickReply: { items: [
-    { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
-    { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
-  ]}}]);
+  const messages = [{
+    type: 'text',
+    text: `✅ ตั้งแจ้งเตือน "${apt.title}"\n\nแจ้งเตือนที่ตั้งไว้:\n${reminderList}`,
+    quickReply: { items: [
+      ...(isBusiness ? [{ type: 'action', action: { type: 'message', label: '➕ เพิ่มช่วงเวลาอีก', text: 'ตั้งแจ้งเตือน' } }] : []),
+      { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
+      { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
+    ]},
+  }];
+  return reply(event, messages);
 }
 
 
