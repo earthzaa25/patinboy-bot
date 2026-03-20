@@ -206,14 +206,14 @@ async function handleEvent(event) {
   if (event.message.type === 'image') {
     const plan = await getUserPlan(userId);
     if (!canUsePremium(plan)) {
-      return reply(event, [{ type: 'text', text: '🔒 การส่งรูปเพื่อนัดหมายสำหรับ Personal Plan ขึ้นไปครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด' }]);
+      return reply(event, [flexText('🔒 การส่งรูปเพื่อนัดหมายสำหรับ Personal Plan ขึ้นไปครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด')]);
     }
     try {
       const imageBase64 = await getImageBase64(event.message.id);
       return await handleImageAppointment(event, userId, imageBase64);
     } catch(err) {
       console.error('Image error:', err);
-      return reply(event, [{ type: 'text', text: '❌ ไม่สามารถอ่านรูปได้ครับ ลองส่งใหม่อีกครั้ง' }]);
+      return reply(event, [flexText('❌ ไม่สามารถอ่านรูปได้ครับ ลองส่งใหม่อีกครั้ง')]);
     }
   }
 
@@ -245,7 +245,7 @@ async function handleEvent(event) {
     const { data } = await supabase.from('appointments').select('*').eq('id', msg.replace('แก้ไข:', '')).single();
     if (data) {
       userState[userId] = { step: 'editing', apt: data };
-      return reply(event, [{ type: 'text', text: `✏️ แก้ไข "${data.title}"\n\nบอกข้อมูลใหม่ได้เลยครับ` }]);
+      return reply(event, [flexText(`✏️ แก้ไข "${data.title}"\n\nบอกข้อมูลใหม่ได้เลยครับ`)]);
     }
   }
 
@@ -272,19 +272,19 @@ async function handleEvent(event) {
     const plan = await getUserPlan(userId);
     if (!canUseBusiness(plan)) return reply(event, [{ type: 'text', text: '🔒 สำหรับ Business Plan เท่านั้นครับ' }]);
     userState[userId] = { step: 'creatingTeam' };
-    return reply(event, [{ type: 'text', text: '👥 ตั้งชื่อทีมได้เลยครับ\n\nเช่น: ทีมขาย, ทีม HR, ออฟฟิศ A' }]);
+    return reply(event, [flexText('👥 ตั้งชื่อทีมได้เลยครับ\n\nเช่น: ทีมขาย, ทีม HR, ออฟฟิศ A')]);
   }
   if (msg.startsWith('link:')) {
     const teamName = msg.replace('link:', '');
     const { data: team } = await supabase.from('teams').select('id, name').eq('name', teamName).eq('owner_line_id', userId).single();
-    if (!team) return reply(event, [{ type: 'text', text: '❌ ไม่พบทีมครับ' }]);
+    if (!team) return reply(event, [flexText('❌ ไม่พบทีมครับ')]);
     const code = await createInviteLink(team.id, userId);
     return reply(event, [{ type: 'text', text: `🔗 Link เชิญเข้าทีม "${team.name}"\n\nส่งข้อความนี้ให้สมาชิกพิมพ์ใน ปฏิทินBoy:\n\n👉 เข้าร่วม ${code}\n\n⏰ หมดอายุใน 7 วันครับ` }]);
   }
   if (msg.startsWith('สมาชิก:')) {
     const teamName = msg.replace('สมาชิก:', '');
     const { data: team } = await supabase.from('teams').select('id').eq('name', teamName).eq('owner_line_id', userId).single();
-    if (!team) return reply(event, [{ type: 'text', text: '❌ ไม่พบทีมครับ' }]);
+    if (!team) return reply(event, [flexText('❌ ไม่พบทีมครับ')]);
     const { data: members } = await supabase.from('team_members').select('*').eq('team_id', team.id);
     const count = members?.length || 0;
     const list = count > 0 ? members.map((m, i) => `${i+1}. สมาชิก (${m.role})`).join('\n') : 'ยังไม่มีสมาชิกครับ';
@@ -304,9 +304,9 @@ async function handleEvent(event) {
   if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
   if (msg === 'ตั้งแจ้งเตือน') {
     const plan = await getUserPlan(userId);
-    if (!canUsePremium(plan)) return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียด' }]);
+    if (!canUsePremium(plan)) return reply(event, [flexText('🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียด')]);
     const apts = await getAllAppointments(userId);
-    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
+    if (apts.length === 0) return reply(event, [flexText('ไม่มีนัดหมายครับ 😊')]);
     userState[userId] = { step: 'selectReminder', apts };
     return reply(event, [flexSelectReminderApt(apts)]);
   }
@@ -315,13 +315,13 @@ async function handleEvent(event) {
   }
   if (msg === 'ลบนัดหมาย') {
     const apts = await getAllAppointments(userId);
-    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
+    if (apts.length === 0) return reply(event, [flexText('ไม่มีนัดหมายครับ 😊')]);
     userState[userId] = { step: 'selectDelete', apts };
     return reply(event, [flexSelectAppointment(apts, 'ลบ')]);
   }
   if (msg === 'แก้ไขนัดหมาย') {
     const apts = await getAllAppointments(userId);
-    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
+    if (apts.length === 0) return reply(event, [flexText('ไม่มีนัดหมายครับ 😊')]);
     userState[userId] = { step: 'selectEdit', apts };
     return reply(event, [flexSelectAppointment(apts, 'แก้ไข')]);
   }
@@ -346,7 +346,7 @@ async function handleEvent(event) {
       ]},
     }]);
   }
-  if (!parsed.time) return reply(event, [{ type: 'text', text: `⏰ "${parsed.title}" — กี่โมงครับ?\n\nเช่น: 14:00 / บ่ายสอง / 1400` }]);
+  if (!parsed.time) return reply(event, [flexText(`⏰ "${parsed.title}" — กี่โมงครับ?\n\nเช่น: 14:00 / บ่ายสอง / 1400`)]);
   return await saveAndReply(event, userId, parsed);
 }
 
@@ -362,7 +362,7 @@ async function handleState(event, userId, msg) {
       return reply(event, [flexSetReminder(apt.id, canUseBusiness(plan))]);
     }
     delete userState[userId];
-    return reply(event, [{ type: 'text', text: '❌ ไม่พบนัดหมายครับ ลองใหม่อีกครั้ง' }]);
+    return reply(event, [flexText('❌ ไม่พบนัดหมายครับ ลองใหม่อีกครั้ง')]);
   }
 
   if (state.step === 'pickReminderTime' && /^แจ้งเตือน\d+$/.test(msg)) {
@@ -373,20 +373,20 @@ async function handleState(event, userId, msg) {
 
   if (state.step === 'creatingTeam') {
     const teamName = msg.trim();
-    if (!teamName) return reply(event, [{ type: 'text', text: '❌ กรุณาพิมพ์ชื่อทีมครับ' }]);
+    if (!teamName) return reply(event, [flexText('❌ กรุณาพิมพ์ชื่อทีมครับ')]);
     const { error } = await supabase.from('teams').insert({ name: teamName, owner_line_id: userId });
     delete userState[userId];
-    if (error) return reply(event, [{ type: 'text', text: '❌ สร้างทีมไม่สำเร็จครับ' }]);
-    return reply(event, [{ type: 'text', text: `✅ สร้างทีม "${teamName}" สำเร็จแล้วครับ!\n\nพิมพ์ "จัดการทีม" เพื่อเชิญสมาชิก`, quickReply: { items: [
+    if (error) return reply(event, [flexText('❌ สร้างทีมไม่สำเร็จครับ')]);
+    return reply(event, [flexText(`✅ สร้างทีม "${teamName}" สำเร็จแล้วครับ!\n\nพิมพ์ "จัดการทีม" เพื่อเชิญสมาชิก`, [
       { type: 'action', action: { type: 'message', label: '👥 จัดการทีม', text: 'จัดการทีม' } },
-    ]}}]);
+    ])]);
   }
 
   if (state.step === 'editing') {
     const parsed = await parseAppointmentWithClaude(msg);
     if (!parsed || !parsed.isAppointment) {
       delete userState[userId];
-      return reply(event, [{ type: 'text', text: '❌ ไม่เข้าใจครับ ยกเลิกการแก้ไขแล้ว' }]);
+      return reply(event, [flexText('❌ ไม่เข้าใจครับ ยกเลิกการแก้ไขแล้ว')]);
     }
     const updateData = { reminded: false };
     if (parsed.title) updateData.title = parsed.title;
@@ -395,7 +395,7 @@ async function handleState(event, userId, msg) {
     if (parsed.location) updateData.location = parsed.location;
     const { error } = await supabase.from('appointments').update(updateData).eq('id', state.apt.id);
     delete userState[userId];
-    if (error) return reply(event, [{ type: 'text', text: `❌ แก้ไขไม่สำเร็จ: ${error.message}` }]);
+    if (error) return reply(event, [flexText(`❌ แก้ไขไม่สำเร็จ: ${error.message}`)]);
     return reply(event, [flexSaveConfirm(parsed.title || state.apt.title, parsed.date || state.apt.meeting_date, parsed.time || state.apt.start_time.slice(0,5), '✏️ แก้ไขนัดหมายแล้ว!')]);
   }
 }
@@ -403,7 +403,7 @@ async function handleState(event, userId, msg) {
 async function deleteAppointment(event, userId, id) {
   const { data } = await supabase.from('appointments').select('title').eq('id', id).single();
   const { error } = await supabase.from('appointments').delete().eq('id', id);
-  if (error) return reply(event, [{ type: 'text', text: `❌ ลบไม่สำเร็จ: ${error.message}` }]);
+  if (error) return reply(event, [flexText(`❌ ลบไม่สำเร็จ: ${error.message}`)]);
   return reply(event, [{ type: 'text', text: `🗑️ ลบ "${data?.title}" แล้วครับ`,
     quickReply: { items: [
       { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
@@ -417,7 +417,7 @@ async function saveAndReply(event, userId, data) {
   const { error } = await supabase.from('appointments').insert({
     user_id: userId, title, meeting_date: date, start_time: `${time}:00`, end_time: null, location: location || null,
   });
-  if (error) return reply(event, [{ type: 'text', text: `❌ บันทึกไม่สำเร็จ: ${error.message}` }]);
+  if (error) return reply(event, [flexText(`❌ บันทึกไม่สำเร็จ: ${error.message}`)]);
   const plan = await getUserPlan(userId);
   return reply(event, [flexSaveConfirm(title, date, time, '✅ บันทึกนัดหมายแล้ว!', canUsePremium(plan))]);
 }
@@ -1155,14 +1155,14 @@ async function handleImageAppointment(event, userId, imageBase64) {
     })
   });
   const data = await res.json();
-  if (!data.content || !data.content[0]) return reply(event, [{ type: 'text', text: '❌ วิเคราะห์รูปไม่ได้ครับ ลองส่งใหม่' }]);
+  if (!data.content || !data.content[0]) return reply(event, [flexText('❌ วิเคราะห์รูปไม่ได้ครับ ลองส่งใหม่')]);
 
   const text = data.content[0].text.trim().replace(/```json|```/g, '').trim();
   const match = text.match(/{[\s\S]*}/);
-  if (!match) return reply(event, [{ type: 'text', text: '❌ ไม่พบข้อมูลนัดหมายในรูปครับ' }]);
+  if (!match) return reply(event, [flexText('❌ ไม่พบข้อมูลนัดหมายในรูปครับ')]);
 
   const parsed = JSON.parse(match[0]);
-  if (!parsed.isAppointment) return reply(event, [{ type: 'text', text: '🤔 ไม่พบข้อมูลนัดหมายในรูปครับ\n\nลองถ่ายรูปใบนัด/ใบสั่งงานที่มีวันและเวลาชัดเจนนะครับ' }]);
+  if (!parsed.isAppointment) return reply(event, [flexText('🤔 ไม่พบข้อมูลนัดหมายในรูปครับ\n\nลองถ่ายรูปใบนัด/ใบสั่งงานที่มีวันและเวลาชัดเจนนะครับ')]);
 
   if (!parsed.date) return reply(event, [{ type: 'text', text: `📅 พบนัด "${parsed.title}" แต่ไม่เห็นวันที่ครับ วันไหนดี?`,
     quickReply: { items: [
@@ -1181,7 +1181,7 @@ async function handleSetReminder(event, userId, aptId, minutesBefore) {
   if (!canUsePremium(plan)) return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ' }]);
 
   const { data: apt } = await supabase.from('appointments').select('*').eq('id', aptId).single();
-  if (!apt) return reply(event, [{ type: 'text', text: '❌ ไม่พบนัดหมายครับ' }]);
+  if (!apt) return reply(event, [flexText('❌ ไม่พบนัดหมายครับ')]);
 
   let reminders = apt.reminders || [];
 
@@ -1289,7 +1289,7 @@ function flexSelectReminderApt(apts) {
 async function handleTeam(event, userId) {
   const plan = await getUserPlan(userId);
   if (!canUseBusiness(plan)) {
-    return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์จัดการทีมสำหรับ Business Plan เท่านั้นครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด' }]);
+    return reply(event, [flexText('🔒 ฟีเจอร์จัดการทีมสำหรับ Business Plan เท่านั้นครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด')]);
   }
 
   // ดึงทีมที่เป็นเจ้าของ
@@ -1389,8 +1389,8 @@ async function createInviteLink(teamId, userId) {
 
 async function joinTeamByCode(event, userId, code) {
   const { data: invite } = await supabase.from('team_invites').select('*, teams(name)').eq('code', code.toUpperCase()).single();
-  if (!invite) return reply(event, [{ type: 'text', text: '❌ ไม่พบ code เชิญ หรือ code หมดอายุแล้วครับ' }]);
-  if (new Date(invite.expires_at) < new Date()) return reply(event, [{ type: 'text', text: '❌ Link เชิญนี้หมดอายุแล้วครับ กรุณาขอ Link ใหม่จากเจ้าของทีม' }]);
+  if (!invite) return reply(event, [flexText('❌ ไม่พบ code เชิญ หรือ code หมดอายุแล้วครับ')]);
+  if (new Date(invite.expires_at) < new Date()) return reply(event, [flexText('❌ Link เชิญนี้หมดอายุแล้วครับ กรุณาขอ Link ใหม่จากเจ้าของทีม')]);
 
   const { error } = await supabase.from('team_members').insert({ team_id: invite.team_id, line_user_id: userId, role: 'member' });
   if (error) return reply(event, [{ type: 'text', text: `✅ คุณเป็นสมาชิกทีม "${invite.teams?.name}" อยู่แล้วครับ` }]);
@@ -1460,6 +1460,43 @@ function flexManageMenu() {
       },
     },
   };
+}
+
+
+// ── FLEX: Text Card (แทน text ธรรมดา) ──
+function flexText(text, quickReplyItems = null) {
+  const lines = text.split('\n');
+  const title = lines[0];
+  const body = lines.slice(1).join('\n').trim();
+
+  // กำหนดสีตาม emoji ที่ขึ้นต้น
+  let headerBg = '#0f172a';
+  let headerColor = '#06C755';
+  if (title.startsWith('❌')) { headerColor = '#ef4444'; }
+  else if (title.startsWith('✅') || title.startsWith('🎉')) { headerColor = '#06C755'; }
+  else if (title.startsWith('⏰')) { headerColor = '#FF6B35'; }
+  else if (title.startsWith('🔒')) { headerColor = '#8b5cf6'; }
+  else if (title.startsWith('📅') || title.startsWith('📋')) { headerColor = '#3b82f6'; }
+  else if (title.startsWith('✏️')) { headerColor = '#f59e0b'; }
+
+  const msg = {
+    type: 'flex', altText: title.replace(/[✅❌⏰🔒📅📋✏️🎉👥💬🗑️]/g, '').trim() || text.slice(0, 40),
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+        contents: [
+          { type: 'text', text: title, size: 'md', weight: 'bold', color: headerColor, wrap: true },
+          ...(body ? [{ type: 'text', text: body, size: 'sm', color: '#475569', wrap: true, margin: 'sm' }] : []),
+        ],
+      },
+    },
+  };
+
+  if (quickReplyItems) {
+    return { ...msg, quickReply: { items: quickReplyItems } };
+  }
+  return msg;
 }
 
 const PORT = process.env.PORT || 3000;
