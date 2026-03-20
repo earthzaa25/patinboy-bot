@@ -505,8 +505,7 @@ async function flexMenu(userId) {
         contents: [
           { type: 'text', text: '📅 ปฏิทินBoy', size: 'xs', color: '#94a3b8' },
           { type: 'text', text: 'เมนูหลัก', size: 'xl', weight: 'bold', color: '#ffffff', margin: 'xs' },
-          { type: 'box', layout: 'vertical', cornerRadius: '20px', paddingAll: '3px', paddingStart: '10px', paddingEnd: '10px', margin: 'sm', alignSelf: 'flex-start',
-            contents: [{ type: 'text', text: `● ${planLabel}`, size: 'xxs', color: planColor, weight: 'bold' }] },
+          { type: 'text', text: `● ${planLabel}`, size: 'xxs', color: planColor, weight: 'bold', margin: 'sm' },
         ],
       },
       body: {
