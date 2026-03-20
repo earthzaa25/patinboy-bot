@@ -95,6 +95,18 @@ async function checkReminders() {
         }
       }
     }
+    // ── Auto-delete นัดที่ผ่านไปแล้ว 1 ชั่วโมง ──
+    const { data: oldApts } = await supabase.from('appointments').select('id, title, meeting_date, start_time')
+      .eq('meeting_date', todayStr);
+    for (const apt of (oldApts || [])) {
+      const [h, m] = apt.start_time.slice(0,5).split(':').map(Number);
+      const aptMins = h * 60 + m;
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      if (nowMins >= aptMins + 60) {
+        await supabase.from('appointments').delete().eq('id', apt.id);
+        console.log(`🗑️ Auto-delete: ${apt.title} (${apt.start_time.slice(0,5)})`);
+      }
+    }
   } catch (err) { console.error('checkReminders error:', err); }
 }
 setInterval(checkReminders, 60 * 1000);
