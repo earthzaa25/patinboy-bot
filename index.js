@@ -213,6 +213,10 @@ async function handleEvent(event) {
     delete userState[userId];
     return await deleteAppointment(event, userId, msg.replace('ลบ:', ''));
   }
+  if (msg.startsWith('setreminder:')) {
+    const parts = msg.split(':');
+    return await handleSetReminder(event, userId, parts[1], parseInt(parts[2]));
+  }
   if (msg.startsWith('แก้ไข:')) {
     delete userState[userId];
     const { data } = await supabase.from('appointments').select('*').eq('id', msg.replace('แก้ไข:', '')).single();
@@ -260,22 +264,7 @@ async function handleEvent(event) {
     const aptId = msg.replace('แจ้งเตือน:', '');
     const plan = await getUserPlan(userId);
     const isBusiness = canUseBusiness(plan);
-    return reply(event, [{
-      type: 'text',
-      text: isBusiness ? '⏰ เลือกเวลาแจ้งเตือน (Business: เพิ่มได้หลายช่วง)' : '⏰ เลือกเวลาแจ้งเตือน (Personal: เลือกได้ 1 ครั้ง)',
-      quickReply: { items: [
-        { type: 'action', action: { type: 'message', label: '10 นาทีก่อน', text: `setreminder:${aptId}:10` } },
-        { type: 'action', action: { type: 'message', label: '30 นาทีก่อน', text: `setreminder:${aptId}:30` } },
-        { type: 'action', action: { type: 'message', label: '1 ชั่วโมงก่อน', text: `setreminder:${aptId}:60` } },
-        { type: 'action', action: { type: 'message', label: '1 วันก่อน', text: `setreminder:${aptId}:1440` } },
-      ]}
-    }]);
-  }
-  if (msg.startsWith('setreminder:')) {
-    const parts = msg.split(':');
-    const aptId = parts[1];
-    const mins = parseInt(parts[2]);
-    return await handleSetReminder(event, userId, aptId, mins);
+    return reply(event, [flexSetReminder(aptId, isBusiness)]);
   }
   if (msg === 'ลบนัดหมาย') {
     const apts = await getAllAppointments(userId);
@@ -768,6 +757,10 @@ function flexAllSchedule(appointments) {
 // ── FLEX: Select Appointment ──
 function flexSelectAppointment(apts, action) {
   const isDelete = action === 'ลบ';
+  const isReminder = action === 'แจ้งเตือน';
+  const icon = isDelete ? '🗑️' : isReminder ? '⏰' : '✏️';
+  const headerColor = isDelete ? '#FF6B35' : isReminder ? '#06C755' : '#06C755';
+
   const items = apts.map(apt => ({
     type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '10px',
     paddingAll: '12px', margin: 'sm', alignItems: 'center',
@@ -776,10 +769,10 @@ function flexSelectAppointment(apts, action) {
       { type: 'box', layout: 'vertical', flex: 1,
         contents: [
           { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
-          { type: 'text', text: apt.start_time.slice(0,5), size: 'xs', color: '#6b7280' },
+          { type: 'text', text: `${apt.meeting_date} ${apt.start_time.slice(0,5)}`, size: 'xs', color: '#6b7280' },
         ],
       },
-      { type: 'text', text: isDelete ? '🗑️' : '✏️', size: 'lg', flex: 0 },
+      { type: 'text', text: icon, size: 'lg', flex: 0 },
     ],
   }));
 
@@ -789,7 +782,7 @@ function flexSelectAppointment(apts, action) {
       type: 'bubble',
       header: {
         type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
-        contents: [{ type: 'text', text: `เลือกนัดที่จะ${action}ครับ`, size: 'md', weight: 'bold', color: isDelete ? '#FF6B35' : '#06C755' }],
+        contents: [{ type: 'text', text: `เลือกนัดที่จะ${action}ครับ`, size: 'md', weight: 'bold', color: headerColor }],
       },
       body: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: items },
     },
@@ -1072,6 +1065,46 @@ async function handleSetReminder(event, userId, aptId, minutesBefore) {
     { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
     { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
   ]}}]);
+}
+
+
+// ── FLEX: Set Reminder Picker ──
+function flexSetReminder(aptId, isBusiness) {
+  const options = [
+    { label: '10 นาทีก่อน', mins: 10 },
+    { label: '30 นาทีก่อน', mins: 30 },
+    { label: '1 ชั่วโมงก่อน', mins: 60 },
+    { label: '3 ชั่วโมงก่อน', mins: 180 },
+    { label: '1 วันก่อน', mins: 1440 },
+    { label: '3 วันก่อน', mins: 4320 },
+  ];
+
+  return {
+    type: 'flex', altText: '⏰ เลือกเวลาแจ้งเตือน',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '⏰ ตั้งเวลาแจ้งเตือน', size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: isBusiness ? 'เพิ่มได้หลายช่วง' : 'เลือก 1 ช่วงเวลา', size: 'xl', weight: 'bold', color: '#ffffff' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+        contents: options.map(opt => ({
+          type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '8px',
+          paddingAll: '12px', alignItems: 'center',
+          action: { type: 'message', label: opt.label, text: `setreminder:${aptId}:${opt.mins}` },
+          contents: [
+            { type: 'text', text: '⏰', flex: 0, size: 'sm' },
+            { type: 'text', text: opt.label, flex: 1, size: 'sm', weight: 'bold', color: '#111111', margin: 'sm' },
+            { type: 'text', text: '›', flex: 0, size: 'lg', color: '#d1d5db' },
+          ],
+        })),
+      },
+    },
+  };
 }
 
 const PORT = process.env.PORT || 3000;
