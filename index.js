@@ -168,6 +168,14 @@ async function handleEvent(event) {
   if (userState[userId]) return handleState(event, userId, msg);
 
   if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
+  if (msg === 'แพลน' || msg === 'plan') {
+    const user = await getOrCreateUser(userId);
+    return reply(event, [flexPlan(user?.plan || 'free', user?.plan_expires_at)]);
+  }
+  if (msg === 'อัปเกรด Personal' || msg === 'อัปเกรด Business') {
+    const planName = msg.includes('Personal') ? 'Personal ฿30/เดือน' : 'Business ฿199/เดือน';
+    return reply(event, [{ type: 'text', text: `💳 อัปเกรด ${planName}\n\nโอนเงินมาที่:\nธนาคาร: กสิกรไทย\nเลขบัญชี: xxx-x-xxxxx-x\nชื่อ: ปฏิทินBoy\n\nแล้วส่งสลิปมาที่นี่เลยครับ ทีมงานจะอัปเกรดให้ภายใน 30 นาทีครับ 😊` }]);
+  }
   if (msg === 'เมนู') return reply(event, [flexMenu()]);
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
   if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
@@ -258,7 +266,8 @@ async function saveAndReply(event, userId, data) {
     user_id: userId, title, meeting_date: date, start_time: `${time}:00`, end_time: null, location: location || null,
   });
   if (error) return reply(event, [{ type: 'text', text: `❌ บันทึกไม่สำเร็จ: ${error.message}` }]);
-  return reply(event, [flexSaveConfirm(title, date, time)]);
+  const plan = await getUserPlan(userId);
+  return reply(event, [flexSaveConfirm(title, date, time, '✅ บันทึกนัดหมายแล้ว!', canUsePremium(plan))]);
 }
 
 async function getTodayAppointments(userId) {
@@ -395,7 +404,7 @@ function makeCalendarUrls(title, date, time) {
 }
 
 // ── FLEX: Save Confirm ──
-function flexSaveConfirm(title, date, time, headerText = '✅ บันทึกนัดหมายแล้ว!') {
+function flexSaveConfirm(title, date, time, headerText = '✅ บันทึกนัดหมายแล้ว!', isPremium = false) {
   const { google, outlook } = makeCalendarUrls(title, date, time);
   return {
     type: 'flex', altText: `✅ ${title}`,
@@ -429,15 +438,21 @@ function flexSaveConfirm(title, date, time, headerText = '✅ บันทึก
                 ]},
             ],
           },
-          { type: 'text', text: 'เพิ่มใน Calendar ของคุณ', size: 'xs', color: '#9ca3af', align: 'center', margin: 'sm' },
-          { type: 'box', layout: 'horizontal', spacing: 'sm',
-            contents: [
-              { type: 'button', style: 'primary', color: '#4285f4', height: 'sm', flex: 1,
-                action: { type: 'uri', label: '📅 Google', uri: google } },
-              { type: 'button', style: 'primary', color: '#0078d4', height: 'sm', flex: 1,
-                action: { type: 'uri', label: '📘 Outlook', uri: outlook } },
-            ],
-          },
+          ...(isPremium ? [
+            { type: 'text', text: 'เพิ่มใน Calendar ของคุณ', size: 'xs', color: '#9ca3af', align: 'center', margin: 'sm' },
+            { type: 'box', layout: 'horizontal', spacing: 'sm',
+              contents: [
+                { type: 'button', style: 'primary', color: '#4285f4', height: 'sm', flex: 1,
+                  action: { type: 'uri', label: '📅 Google', uri: google } },
+                { type: 'button', style: 'primary', color: '#0078d4', height: 'sm', flex: 1,
+                  action: { type: 'uri', label: '📘 Outlook', uri: outlook } },
+              ],
+            },
+          ] : [
+            { type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '8px', paddingAll: '8px', margin: 'sm',
+              contents: [{ type: 'text', text: '🔒 Add to Calendar สำหรับ Personal ขึ้นไป', size: 'xs', color: '#9ca3af', align: 'center', wrap: true }]
+            },
+          ]),
         ],
       },
       footer: {
@@ -804,5 +819,90 @@ function flexContact() {
     },
   };
 }
+
+// ── User Management ──
+async function getOrCreateUser(userId) {
+  const { data, error } = await supabase.from('users').select('*').eq('line_user_id', userId).single();
+  if (data) return data;
+  const { data: newUser } = await supabase.from('users').insert({ line_user_id: userId, plan: 'free' }).select().single();
+  return newUser;
+}
+
+async function getUserPlan(userId) {
+  const user = await getOrCreateUser(userId);
+  if (!user) return 'free';
+  if (user.plan !== 'free' && user.plan_expires_at) {
+    const now = new Date();
+    const expires = new Date(user.plan_expires_at);
+    if (now > expires) {
+      await supabase.from('users').update({ plan: 'free', plan_expires_at: null }).eq('line_user_id', userId);
+      return 'free';
+    }
+  }
+  return user.plan || 'free';
+}
+
+function canUsePremium(plan) {
+  return plan === 'personal' || plan === 'business';
+}
+
+function canUseBusiness(plan) {
+  return plan === 'business';
+}
+
+
+// ── FLEX: Plan ──
+function flexPlan(plan, expiresAt) {
+  const planNames = { free: 'Free', personal: 'Personal', business: 'Business' };
+  const planColors = { free: '#06C755', personal: '#3b82f6', business: '#8b5cf6' };
+  const planPrices = { free: 'ฟรีตลอด', personal: '฿30/เดือน', business: '฿199/เดือน' };
+  const color = planColors[plan] || '#06C755';
+  const expiry = expiresAt ? `หมดอายุ: ${new Date(expiresAt).toLocaleDateString('th-TH')}` : '';
+
+  const freeFeatures = ['✓ เพิ่ม/ดู/ลบนัดหมาย', '✓ แจ้งเตือน 30 นาที', '✓ ดูนัดทั้งเดือน'];
+  const personalFeatures = ['✓ ทุกอย่างใน Free', '✓ Add to Calendar', '✓ ส่งรูปเพื่อนัด', '✓ ตั้งเวลาแจ้งเตือนเอง (1 ครั้ง)', '✓ Export PDF/Excel', '✓ นัดซ้ำประจำ'];
+  const businessFeatures = ['✓ ทุกอย่างใน Personal', '✓ แจ้งเตือนหลายช่วงต่อนัด', '✓ จัดการทีม', '✓ Web Dashboard'];
+
+  const features = plan === 'business' ? businessFeatures : plan === 'personal' ? personalFeatures : freeFeatures;
+
+  return {
+    type: 'flex', altText: `แพลนของคุณ: ${planNames[plan]}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '👤 แพลนของคุณ', size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: planNames[plan] || 'Free', size: 'xxl', weight: 'bold', color: color },
+          { type: 'text', text: planPrices[plan] || 'ฟรีตลอด', size: 'sm', color: '#94a3b8', margin: 'xs' },
+          expiry ? { type: 'text', text: expiry, size: 'xs', color: '#FF6B35', margin: 'xs' } : { type: 'filler' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+        contents: features.map(f => ({
+          type: 'box', layout: 'horizontal', spacing: 'sm',
+          contents: [
+            { type: 'text', text: f.startsWith('✓') ? '✓' : '✗', flex: 0, size: 'sm', color: f.startsWith('✓') ? color : '#d1d5db' },
+            { type: 'text', text: f.slice(2), flex: 1, size: 'sm', color: f.startsWith('✓') ? '#111111' : '#9ca3af', wrap: true },
+          ],
+        })),
+      },
+      footer: plan === 'free' ? {
+        type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+        contents: [
+          { type: 'button', style: 'primary', color: '#3b82f6', height: 'sm', action: { type: 'message', label: '⬆️ อัปเกรด Personal ฿30/เดือน', text: 'อัปเกรด Personal' } },
+          { type: 'button', style: 'primary', color: '#8b5cf6', height: 'sm', action: { type: 'message', label: '⬆️ อัปเกรด Business ฿199/เดือน', text: 'อัปเกรด Business' } },
+        ],
+      } : plan === 'personal' ? {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          { type: 'button', style: 'primary', color: '#8b5cf6', height: 'sm', action: { type: 'message', label: '⬆️ อัปเกรด Business ฿199/เดือน', text: 'อัปเกรด Business' } },
+        ],
+      } : { type: 'box', layout: 'vertical', paddingAll: '12px', contents: [{ type: 'text', text: '🎉 คุณใช้แผนสูงสุดแล้วครับ!', size: 'sm', color: '#8b5cf6', align: 'center' }] },
+    },
+  };
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ ปฏิทินBoy Bot รันที่ port ${PORT}`));
