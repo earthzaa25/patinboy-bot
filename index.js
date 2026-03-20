@@ -27,6 +27,15 @@ app.post('/webhook', (req, res) => {
     .catch((err) => { console.error(err); res.status(500).end(); });
 });
 
+// endpoint รับรูปภาพจาก LINE
+async function getImageBase64(messageId) {
+  const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+    headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+  });
+  const buffer = await res.arrayBuffer();
+  return Buffer.from(buffer).toString('base64');
+}
+
 function reply(event, messages) {
   return client.replyMessage({ replyToken: event.replyToken, messages });
 }
@@ -38,22 +47,53 @@ function formatDate(d) {
 // ── แจ้งเตือนอัตโนมัติทุก 1 นาที (ใช้ setInterval แทน node-cron) ──
 async function checkReminders() {
   try {
-    // ใช้เวลาไทย UTC+7
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
     const todayStr = formatDate(now);
-    const target = new Date(now.getTime() + 30 * 60 * 1000);
-    const targetTime = `${String(target.getHours()).padStart(2,'0')}:${String(target.getMinutes()).padStart(2,'0')}:00`;
-    console.log(`🔔 เช็คแจ้งเตือน (ไทย): ${todayStr} ${targetTime}`);
-    const { data, error } = await supabase.from('appointments').select('*')
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    console.log(`🔔 เช็คแจ้งเตือน (ไทย): ${todayStr} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`);
+
+    // ดึงนัดวันนี้ที่ยังไม่ reminded (Free plan - 30 นาที fixed)
+    const target30 = new Date(now.getTime() + 30 * 60 * 1000);
+    const targetTime = `${String(target30.getHours()).padStart(2,'0')}:${String(target30.getMinutes()).padStart(2,'0')}:00`;
+    const { data: freeApts } = await supabase.from('appointments').select('*')
       .eq('meeting_date', todayStr).eq('start_time', targetTime).eq('reminded', false);
-    if (error) { console.error('Reminder query error:', error); return; }
-    if (!data || data.length === 0) return;
-    for (const apt of data) {
-      try {
-        await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt)] });
-        await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
-        console.log(`✅ แจ้งเตือน: ${apt.title} → ${apt.user_id}`);
-      } catch (err) { console.error('Push error:', err.message); }
+
+    for (const apt of (freeApts || [])) {
+      const plan = await getUserPlan(apt.user_id);
+      // Free plan หรือไม่มี custom reminders → ใช้ 30 นาที default
+      if (!apt.reminders || apt.reminders.length === 0) {
+        try {
+          await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
+          await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
+          console.log(`✅ แจ้งเตือน (30 นาที): ${apt.title}`);
+        } catch (err) { console.error('Push error:', err.message); }
+      }
+    }
+
+    // ดึงนัดที่มี custom reminders (Personal/Business)
+    const { data: customApts } = await supabase.from('appointments').select('*')
+      .eq('meeting_date', todayStr)
+      .not('reminders', 'eq', '[]')
+      .not('reminders', 'is', null);
+
+    for (const apt of (customApts || [])) {
+      const reminders = apt.reminders || [];
+      const [h, m] = apt.start_time.slice(0,5).split(':').map(Number);
+      const aptMins = h * 60 + m;
+
+      for (let i = 0; i < reminders.length; i++) {
+        const r = reminders[i];
+        if (r.sent) continue;
+        const triggerMins = aptMins - r.minutes;
+        if (currentMins === triggerMins) {
+          try {
+            await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, r.minutes)] });
+            reminders[i].sent = true;
+            await supabase.from('appointments').update({ reminders }).eq('id', apt.id);
+            console.log(`✅ แจ้งเตือน (${r.minutes} นาที): ${apt.title}`);
+          } catch (err) { console.error('Push error:', err.message); }
+        }
+      }
     }
   } catch (err) { console.error('checkReminders error:', err); }
 }
@@ -147,8 +187,27 @@ async function parseAppointmentWithClaude(text) {
 const userState = {};
 
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') return;
+  if (event.type !== 'message') return;
   const userId = event.source.userId;
+
+  // รองรับรูปภาพ (Personal+)
+  if (event.message.type === 'image') {
+    const plan = await getUserPlan(userId);
+    if (!canUsePremium(plan)) {
+      return reply(event, [{ type: 'text', text: '🔒 การส่งรูปเพื่อนัดหมายสำหรับ Personal Plan ขึ้นไปครับ
+
+พิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด' }]);
+    }
+    try {
+      const imageBase64 = await getImageBase64(event.message.id);
+      return await handleImageAppointment(event, userId, imageBase64);
+    } catch(err) {
+      console.error('Image error:', err);
+      return reply(event, [{ type: 'text', text: '❌ ไม่สามารถอ่านรูปได้ครับ ลองส่งใหม่อีกครั้ง' }]);
+    }
+  }
+
+  if (event.message.type !== 'text') return;
   const msg = event.message.text.trim();
   console.log('USER ID:', userId);
 
@@ -191,6 +250,37 @@ async function handleEvent(event) {
   }
   if (msg === 'กำหนดการ' || msg === 'ดูนัดหมาย') return reply(event, [flexSchedule(await getTodayAppointments(userId))]);
   if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
+  if (msg === 'ตั้งแจ้งเตือน') {
+    const plan = await getUserPlan(userId);
+    if (!canUsePremium(plan)) return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ
+
+พิมพ์ "แพลน" เพื่อดูรายละเอียด' }]);
+    const apts = await getAllAppointments(userId);
+    if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
+    userState[userId] = { step: 'selectReminder', apts };
+    return reply(event, [flexSelectAppointment(apts, 'แจ้งเตือน')]);
+  }
+  if (msg.startsWith('แจ้งเตือน:')) {
+    const aptId = msg.replace('แจ้งเตือน:', '');
+    const plan = await getUserPlan(userId);
+    const isBusiness = canUseBusiness(plan);
+    return reply(event, [{
+      type: 'text',
+      text: isBusiness ? '⏰ เลือกเวลาแจ้งเตือน (Business: เพิ่มได้หลายช่วง)' : '⏰ เลือกเวลาแจ้งเตือน (Personal: เลือกได้ 1 ครั้ง)',
+      quickReply: { items: [
+        { type: 'action', action: { type: 'message', label: '10 นาทีก่อน', text: `setreminder:${aptId}:10` } },
+        { type: 'action', action: { type: 'message', label: '30 นาทีก่อน', text: `setreminder:${aptId}:30` } },
+        { type: 'action', action: { type: 'message', label: '1 ชั่วโมงก่อน', text: `setreminder:${aptId}:60` } },
+        { type: 'action', action: { type: 'message', label: '1 วันก่อน', text: `setreminder:${aptId}:1440` } },
+      ]}
+    }]);
+  }
+  if (msg.startsWith('setreminder:')) {
+    const parts = msg.split(':');
+    const aptId = parts[1];
+    const mins = parseInt(parts[2]);
+    return await handleSetReminder(event, userId, aptId, mins);
+  }
   if (msg === 'ลบนัดหมาย') {
     const apts = await getAllAppointments(userId);
     if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
@@ -467,7 +557,7 @@ function flexSaveConfirm(title, date, time, headerText = '✅ บันทึก
 }
 
 // ── FLEX: Reminder ──
-function flexReminder(apt) {
+function flexReminder(apt, minutesBefore = 30) {
   return {
     type: 'flex', altText: `⏰ ${apt.title} อีก 30 นาที`,
     contents: {
@@ -476,7 +566,7 @@ function flexReminder(apt) {
         type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
         contents: [
           { type: 'text', text: '⏰ แจ้งเตือนนัดหมาย', size: 'xs', color: '#94a3b8' },
-          { type: 'text', text: 'อีก 30 นาที!', size: 'xxl', weight: 'bold', color: '#FF6B35' },
+          { type: 'text', text: `อีก ${minutesBefore >= 1440 ? minutesBefore/1440+' วัน' : minutesBefore >= 60 ? minutesBefore/60+' ชั่วโมง' : minutesBefore+' นาที'}!`, size: 'xxl', weight: 'bold', color: '#FF6B35' },
         ],
       },
       body: {
@@ -902,6 +992,90 @@ function flexPlan(plan, expiresAt) {
       } : { type: 'box', layout: 'vertical', paddingAll: '12px', contents: [{ type: 'text', text: '🎉 คุณใช้แผนสูงสุดแล้วครับ!', size: 'sm', color: '#8b5cf6', align: 'center' }] },
     },
   };
+}
+
+
+// ── วิเคราะห์รูปภาพเพื่อนัดหมาย ──
+async function handleImageAppointment(event, userId, imageBase64) {
+  const today = new Date();
+  const todayStr = formatDate(today);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = formatDate(tomorrow);
+
+  const prompt = `วันนี้คือ ${todayStr} พรุ่งนี้คือ ${tomorrowStr}
+
+ดูรูปนี้และหาข้อมูลนัดหมาย ตอบเฉพาะ JSON เท่านั้น:
+{"isAppointment":true/false,"title":"ชื่อนัด","date":"YYYY-MM-DD หรือ null","time":"HH:MM หรือ null","location":"สถานที่ หรือ null","notes":"รายละเอียดเพิ่มเติม หรือ null"}
+
+ถ้าไม่พบข้อมูลนัดหมายในรูป ให้ isAppointment=false`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    })
+  });
+  const data = await res.json();
+  if (!data.content || !data.content[0]) return reply(event, [{ type: 'text', text: '❌ วิเคราะห์รูปไม่ได้ครับ ลองส่งใหม่' }]);
+
+  const text = data.content[0].text.trim().replace(/```json|```/g, '').trim();
+  const match = text.match(/{[\s\S]*}/);
+  if (!match) return reply(event, [{ type: 'text', text: '❌ ไม่พบข้อมูลนัดหมายในรูปครับ' }]);
+
+  const parsed = JSON.parse(match[0]);
+  if (!parsed.isAppointment) return reply(event, [{ type: 'text', text: '🤔 ไม่พบข้อมูลนัดหมายในรูปครับ
+
+ลองถ่ายรูปใบนัด/ใบสั่งงานที่มีวันและเวลาชัดเจนนะครับ' }]);
+
+  if (!parsed.date) return reply(event, [{ type: 'text', text: `📅 พบนัด "${parsed.title}" แต่ไม่เห็นวันที่ครับ วันไหนดี?`,
+    quickReply: { items: [
+      { type: 'action', action: { type: 'message', label: 'วันนี้', text: `${parsed.title} วันนี้ ${parsed.time || ''}`.trim() } },
+      { type: 'action', action: { type: 'message', label: 'พรุ่งนี้', text: `${parsed.title} พรุ่งนี้ ${parsed.time || ''}`.trim() } },
+    ]}
+  }]);
+  if (!parsed.time) return reply(event, [{ type: 'text', text: `⏰ พบนัด "${parsed.title}" แต่ไม่เห็นเวลาครับ กี่โมง?` }]);
+
+  return await saveAndReply(event, userId, parsed);
+}
+
+// ── ตั้งเวลาแจ้งเตือน (Personal+) ──
+async function handleSetReminder(event, userId, aptId, minutesBefore) {
+  const plan = await getUserPlan(userId);
+  if (!canUsePremium(plan)) return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ' }]);
+
+  const { data: apt } = await supabase.from('appointments').select('*').eq('id', aptId).single();
+  if (!apt) return reply(event, [{ type: 'text', text: '❌ ไม่พบนัดหมายครับ' }]);
+
+  let reminders = apt.reminders || [];
+
+  if (canUseBusiness(plan)) {
+    // Business: เพิ่มได้หลายช่วง
+    if (!reminders.find(r => r.minutes === minutesBefore)) {
+      reminders.push({ minutes: minutesBefore, sent: false });
+    }
+  } else {
+    // Personal: ตั้งได้ 1 ครั้ง
+    reminders = [{ minutes: minutesBefore, sent: false }];
+  }
+
+  await supabase.from('appointments').update({ reminders, reminded: false }).eq('id', aptId);
+
+  const label = minutesBefore >= 1440 ? `${minutesBefore/1440} วันก่อน` : minutesBefore >= 60 ? `${minutesBefore/60} ชั่วโมงก่อน` : `${minutesBefore} นาทีก่อน`;
+  return reply(event, [{ type: 'text', text: `✅ ตั้งแจ้งเตือน "${apt.title}"
+
+⏰ แจ้งเตือนก่อน ${label}`, quickReply: { items: [
+    { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
+    { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
+  ]}}]);
 }
 
 const PORT = process.env.PORT || 3000;
