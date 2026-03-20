@@ -209,6 +209,11 @@ async function handleEvent(event) {
   const msg = event.message.text.trim();
   console.log('USER ID:', userId);
 
+  // เช็ค userState สำหรับ reminder flow ก่อน
+  if (userState[userId] && (userState[userId].step === 'selectReminder' || userState[userId].step === 'pickReminderTime')) {
+    return handleState(event, userId, msg);
+  }
+
   if (msg.startsWith('ลบ:')) {
     delete userState[userId];
     return await deleteAppointment(event, userId, msg.replace('ลบ:', ''));
@@ -216,11 +221,12 @@ async function handleEvent(event) {
   if (/^แจ้งเตือน\d+$/.test(msg)) {
     const mins = parseInt(msg.replace('แจ้งเตือน', ''));
     const state = userState[userId];
-    if (state && state.step === 'selectReminder' && state.aptId) {
+    if (state && state.aptId && (state.step === 'selectReminder' || state.step === 'pickReminderTime')) {
+      const aptId = state.aptId;
       delete userState[userId];
-      return await handleSetReminder(event, userId, state.aptId, mins);
+      return await handleSetReminder(event, userId, aptId, mins);
     }
-    return reply(event, [{ type: 'text', text: '❌ เกิดข้อผิดพลาดครับ ลองใหม่อีกครั้งนะครับ' }]);
+    return reply(event, [{ type: 'text', text: '❌ กรุณาเลือกนัดหมายก่อนครับ พิมพ์ "ตั้งแจ้งเตือน" ใหม่อีกครั้ง' }]);
   }
   if (msg.startsWith('แก้ไข:')) {
     delete userState[userId];
