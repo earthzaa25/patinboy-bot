@@ -264,16 +264,21 @@ async function handleEvent(event) {
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
   if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
   if (msg === 'ทีม' || msg === 'จัดการทีม') return await handleTeam(event, userId);
+  if (msg.startsWith('เข้าร่วม ') || msg.startsWith('เข้าร่วม')) {
+    const code = msg.replace('เข้าร่วม', '').trim();
+    if (code) return await joinTeamByCode(event, userId, code);
+  }
   if (msg === 'สร้างทีม') {
     const plan = await getUserPlan(userId);
     if (!canUseBusiness(plan)) return reply(event, [{ type: 'text', text: '🔒 สำหรับ Business Plan เท่านั้นครับ' }]);
     userState[userId] = { step: 'creatingTeam' };
     return reply(event, [{ type: 'text', text: '👥 ตั้งชื่อทีมได้เลยครับ\n\nเช่น: ทีมขาย, ทีม HR, ออฟฟิศ A' }]);
   }
-  if (msg.startsWith('เชิญสมาชิก:')) {
-    const teamId = msg.replace('เชิญสมาชิก:', '');
-    userState[userId] = { step: 'invitingMember', teamId };
-    return reply(event, [{ type: 'text', text: '📲 พิมพ์ LINE User ID ของสมาชิกที่ต้องการเชิญครับ\n\n(User ID จะขึ้นต้นด้วย U เช่น U6b7b659...)' }]);
+  if (msg.startsWith('สร้างlink:')) {
+    const teamId = msg.replace('สร้างlink:', '');
+    const { data: team } = await supabase.from('teams').select('name').eq('id', teamId).single();
+    const code = await createInviteLink(teamId, userId);
+    return reply(event, [{ type: 'text', text: `🔗 Link เชิญเข้าทีม "${team?.name}"\n\nส่งข้อความนี้ให้สมาชิกพิมพ์ใน ปฏิทินBoy:\n\n👉 เข้าร่วม ${code}\n\n⏰ Link หมดอายุใน 7 วันครับ` }]);
   }
   if (msg.startsWith('ดูสมาชิก:')) {
     const teamId = msg.replace('ดูสมาชิก:', '');
@@ -377,20 +382,6 @@ async function handleState(event, userId, msg) {
     if (error) return reply(event, [{ type: 'text', text: '❌ สร้างทีมไม่สำเร็จครับ' }]);
     return reply(event, [{ type: 'text', text: `✅ สร้างทีม "${teamName}" สำเร็จแล้วครับ!\n\nพิมพ์ "จัดการทีม" เพื่อเชิญสมาชิก`, quickReply: { items: [
       { type: 'action', action: { type: 'message', label: '👥 จัดการทีม', text: 'จัดการทีม' } },
-    ]}}]);
-  }
-
-  if (state.step === 'invitingMember') {
-    const inviteId = msg.trim();
-    if (!inviteId.startsWith('U')) return reply(event, [{ type: 'text', text: '❌ LINE User ID ต้องขึ้นต้นด้วย U ครับ' }]);
-    const { error } = await supabase.from('team_members').insert({ team_id: state.teamId, line_user_id: inviteId, role: 'member' });
-    delete userState[userId];
-    if (error) return reply(event, [{ type: 'text', text: '❌ เชิญไม่สำเร็จ อาจเป็นสมาชิกอยู่แล้วครับ' }]);
-    try {
-      await client.pushMessage({ to: inviteId, messages: [{ type: 'text', text: '🎉 คุณได้รับเชิญเข้าร่วมทีมใน ปฏิทินBoy แล้วครับ!\n\nพิมพ์ "จัดการทีม" เพื่อดูทีมของคุณ' }] });
-    } catch(e) {}
-    return reply(event, [{ type: 'text', text: `✅ เชิญสมาชิกสำเร็จแล้วครับ!`, quickReply: { items: [
-      { type: 'action', action: { type: 'message', label: '👥 ดูทีม', text: 'จัดการทีม' } },
     ]}}]);
   }
 
@@ -1333,7 +1324,7 @@ function flexTeamMenu(ownTeams, memberTeams) {
           { type: 'box', layout: 'horizontal', margin: 'sm', spacing: 'sm',
             contents: [
               { type: 'button', style: 'primary', color: '#06C755', height: 'sm', flex: 1,
-                action: { type: 'message', label: '+ เชิญสมาชิก', text: `เชิญสมาชิก:${team.id}` } },
+                action: { type: 'message', label: '🔗 Link เชิญ', text: `สร้างlink:${team.id}` } },
               { type: 'button', style: 'secondary', height: 'sm', flex: 1,
                 action: { type: 'message', label: '👥 ดูสมาชิก', text: `ดูสมาชิก:${team.id}` } },
             ]},
@@ -1385,6 +1376,31 @@ function flexTeamMenu(ownTeams, memberTeams) {
       },
     },
   };
+}
+
+
+// ── Team Invite Link ──
+function generateCode() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+async function createInviteLink(teamId, userId) {
+  const code = generateCode();
+  await supabase.from('team_invites').insert({ team_id: teamId, code, created_by: userId });
+  return code;
+}
+
+async function joinTeamByCode(event, userId, code) {
+  const { data: invite } = await supabase.from('team_invites').select('*, teams(name)').eq('code', code.toUpperCase()).single();
+  if (!invite) return reply(event, [{ type: 'text', text: '❌ ไม่พบ code เชิญ หรือ code หมดอายุแล้วครับ' }]);
+  if (new Date(invite.expires_at) < new Date()) return reply(event, [{ type: 'text', text: '❌ Link เชิญนี้หมดอายุแล้วครับ กรุณาขอ Link ใหม่จากเจ้าของทีม' }]);
+
+  const { error } = await supabase.from('team_members').insert({ team_id: invite.team_id, line_user_id: userId, role: 'member' });
+  if (error) return reply(event, [{ type: 'text', text: `✅ คุณเป็นสมาชิกทีม "${invite.teams?.name}" อยู่แล้วครับ` }]);
+
+  return reply(event, [{ type: 'text', text: `🎉 เข้าร่วมทีม "${invite.teams?.name}" สำเร็จแล้วครับ!`, quickReply: { items: [
+    { type: 'action', action: { type: 'message', label: '👥 ดูทีม', text: 'จัดการทีม' } },
+  ]}}]);
 }
 
 const PORT = process.env.PORT || 3000;
