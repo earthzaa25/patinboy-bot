@@ -194,9 +194,7 @@ async function handleEvent(event) {
   if (event.message.type === 'image') {
     const plan = await getUserPlan(userId);
     if (!canUsePremium(plan)) {
-      return reply(event, [{ type: 'text', text: '🔒 การส่งรูปเพื่อนัดหมายสำหรับ Personal Plan ขึ้นไปครับ
-
-พิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด' }]);
+      return reply(event, [{ type: 'text', text: '🔒 การส่งรูปเพื่อนัดหมายสำหรับ Personal Plan ขึ้นไปครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียดการอัปเกรด' }]);
     }
     try {
       const imageBase64 = await getImageBase64(event.message.id);
@@ -252,9 +250,7 @@ async function handleEvent(event) {
   if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
   if (msg === 'ตั้งแจ้งเตือน') {
     const plan = await getUserPlan(userId);
-    if (!canUsePremium(plan)) return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ
-
-พิมพ์ "แพลน" เพื่อดูรายละเอียด' }]);
+    if (!canUsePremium(plan)) return reply(event, [{ type: 'text', text: '🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียด' }]);
     const apts = await getAllAppointments(userId);
     if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
     userState[userId] = { step: 'selectReminder', apts };
@@ -1032,9 +1028,7 @@ async function handleImageAppointment(event, userId, imageBase64) {
   if (!match) return reply(event, [{ type: 'text', text: '❌ ไม่พบข้อมูลนัดหมายในรูปครับ' }]);
 
   const parsed = JSON.parse(match[0]);
-  if (!parsed.isAppointment) return reply(event, [{ type: 'text', text: '🤔 ไม่พบข้อมูลนัดหมายในรูปครับ
-
-ลองถ่ายรูปใบนัด/ใบสั่งงานที่มีวันและเวลาชัดเจนนะครับ' }]);
+  if (!parsed.isAppointment) return reply(event, [{ type: 'text', text: '🤔 ไม่พบข้อมูลนัดหมายในรูปครับ\n\nลองถ่ายรูปใบนัด/ใบสั่งงานที่มีวันและเวลาชัดเจนนะครับ' }]);
 
   if (!parsed.date) return reply(event, [{ type: 'text', text: `📅 พบนัด "${parsed.title}" แต่ไม่เห็นวันที่ครับ วันไหนดี?`,
     quickReply: { items: [
