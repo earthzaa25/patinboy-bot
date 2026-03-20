@@ -263,14 +263,7 @@ async function handleEvent(event) {
     const apts = await getAllAppointments(userId);
     if (apts.length === 0) return reply(event, [{ type: 'text', text: 'ไม่มีนัดหมายครับ 😊' }]);
     userState[userId] = { step: 'selectReminder', apts };
-    return reply(event, [flexSelectAppointment(apts, 'แจ้งเตือน')]);
-  }
-  if (msg.startsWith('แจ้งเตือน:')) {
-    const aptId = msg.replace('แจ้งเตือน:', '');
-    const plan = await getUserPlan(userId);
-    const isBusiness = canUseBusiness(plan);
-    userState[userId] = { step: 'selectReminder', aptId };
-    return reply(event, [flexSetReminder(aptId, isBusiness)]);
+    return reply(event, [flexSelectReminderApt(apts)]);
   }
   if (msg === 'ลบนัดหมาย') {
     const apts = await getAllAppointments(userId);
@@ -311,6 +304,25 @@ async function handleEvent(event) {
 
 async function handleState(event, userId, msg) {
   const state = userState[userId];
+
+  if (state.step === 'selectReminder') {
+    // ผู้ใช้พิมพ์ชื่อนัด → หา aptId จาก apts
+    const apt = state.apts?.find(a => a.title === msg || msg.includes(a.title));
+    if (apt) {
+      const plan = await getUserPlan(userId);
+      userState[userId] = { step: 'pickReminderTime', aptId: apt.id };
+      return reply(event, [flexSetReminder(apt.id, canUseBusiness(plan))]);
+    }
+    delete userState[userId];
+    return reply(event, [{ type: 'text', text: '❌ ไม่พบนัดหมายครับ ลองใหม่อีกครั้ง' }]);
+  }
+
+  if (state.step === 'pickReminderTime' && /^แจ้งเตือน\d+$/.test(msg)) {
+    const mins = parseInt(msg.replace('แจ้งเตือน', ''));
+    delete userState[userId];
+    return await handleSetReminder(event, userId, state.aptId, mins);
+  }
+
   if (state.step === 'editing') {
     const parsed = await parseAppointmentWithClaude(msg);
     if (!parsed || !parsed.isAppointment) {
@@ -1109,6 +1121,37 @@ function flexSetReminder(aptId, isBusiness) {
           ],
         })),
       },
+    },
+  };
+}
+
+
+// ── FLEX: Select Appointment for Reminder (ไม่โชว์ UUID) ──
+function flexSelectReminderApt(apts) {
+  const items = apts.map(apt => ({
+    type: 'box', layout: 'horizontal', backgroundColor: '#f9fafb', cornerRadius: '10px',
+    paddingAll: '12px', margin: 'sm', alignItems: 'center',
+    action: { type: 'message', label: apt.title, text: apt.title },
+    contents: [
+      { type: 'box', layout: 'vertical', flex: 1,
+        contents: [
+          { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
+          { type: 'text', text: `${apt.meeting_date} ${apt.start_time.slice(0,5)}`, size: 'xs', color: '#6b7280' },
+        ],
+      },
+      { type: 'text', text: '⏰', size: 'lg', flex: 0 },
+    ],
+  }));
+
+  return {
+    type: 'flex', altText: 'เลือกนัดที่จะตั้งแจ้งเตือน',
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        contents: [{ type: 'text', text: 'เลือกนัดที่จะตั้งแจ้งเตือนครับ', size: 'md', weight: 'bold', color: '#06C755' }],
+      },
+      body: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: items },
     },
   };
 }
