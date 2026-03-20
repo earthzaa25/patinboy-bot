@@ -515,7 +515,7 @@ async function flexMenu(userId) {
           menuRow('📆', 'นัดหมายทั้งหมด', 'ดูนัดทั้งเดือน', 'นัดหมายทั้งหมด'),
           menuRow('📋', 'จัดการนัด', isPremium ? 'แก้ไข / ลบ / แจ้งเตือน' : 'แก้ไข / ลบ', 'จัดการนัด'),
           menuRow('📤', 'Export PDF/Excel', isPremium ? 'Personal' : 'Personal+', isPremium ? 'export' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
-          menuRow('🔁', 'นัดซ้ำประจำ', isPremium ? 'Personal' : 'Personal+', isPremium ? 'นัดซ้ำ' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
+
           menuRow('👥', 'จัดการทีม', isBusiness ? 'Business' : 'Business', isBusiness ? 'ทีม' : '', !isBusiness, 'purple', isBusiness ? 'purple' : null),
           separator,
           menuRow('💳', 'แพลนของฉัน', `${planLabel} · ${plan === 'business' ? '฿199/เดือน' : plan === 'personal' ? '฿30/เดือน' : 'ฟรีตลอด'}`, 'แพลน'),
