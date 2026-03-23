@@ -209,8 +209,15 @@ async function parseAppointmentWithClaude(text) {
 const userState = {};
 
 async function handleEvent(event) {
-  if (event.type !== 'message') return;
   const userId = event.source.userId;
+
+  // Greeting เมื่อมีคนเพิ่ม bot เป็นเพื่อน
+  if (event.type === 'follow') {
+    await getOrCreateUser(userId);
+    return reply(event, [flexWelcome()]);
+  }
+
+  if (event.type !== 'message') return;
 
   // รองรับรูปภาพ (Personal+)
   if (event.message.type === 'image') {
@@ -229,7 +236,6 @@ async function handleEvent(event) {
 
   if (event.message.type !== 'text') return;
   const msg = event.message.text.trim();
-  console.log('USER ID:', userId);
 
   // เช็ค userState สำหรับ reminder flow ก่อน
   if (userState[userId] && (userState[userId].step === 'selectReminder' || userState[userId].step === 'pickReminderTime')) {
@@ -268,7 +274,7 @@ async function handleEvent(event) {
   }
   if (msg === 'อัปเกรด Personal' || msg === 'อัปเกรด Business') {
     const planName = msg.includes('Personal') ? 'Personal ฿30/เดือน' : 'Business ฿199/เดือน';
-    return reply(event, [{ type: 'text', text: `💳 อัปเกรด ${planName}\n\nโอนเงินมาที่:\nธนาคาร: กสิกรไทย\nเลขบัญชี: xxx-x-xxxxx-x\nชื่อ: ปฏิทินBoy\n\nแล้วส่งสลิปมาที่นี่เลยครับ ทีมงานจะอัปเกรดให้ภายใน 30 นาทีครับ 😊` }]);
+    return reply(event, [flexText(`💳 อัปเกรด ${planName}\n\nโอนเงินมาที่:\nธนาคาร: กสิกรไทย\nเลขบัญชี: xxx-x-xxxxx-x\nชื่อ: ปฏิทินBoy\n\nแล้วส่งสลิปมาที่นี่เลยครับ ทีมงานจะอัปเกรดให้ภายใน 30 นาที 😊`)]);
   }
   if (msg === 'เมนู') return reply(event, [await flexMenu(userId)]);
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
@@ -280,7 +286,7 @@ async function handleEvent(event) {
   }
   if (msg === 'สร้างทีม') {
     const plan = await getUserPlan(userId);
-    if (!canUseBusiness(plan)) return reply(event, [{ type: 'text', text: '🔒 สำหรับ Business Plan เท่านั้นครับ' }]);
+    if (!canUseBusiness(plan)) return reply(event, [flexText('🔒 สำหรับ Business Plan เท่านั้นครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียด')]);
     userState[userId] = { step: 'creatingTeam' };
     return reply(event, [flexText('👥 ตั้งชื่อทีมได้เลยครับ\n\nเช่น: ทีมขาย, ทีม HR, ออฟฟิศ A')]);
   }
@@ -298,7 +304,7 @@ async function handleEvent(event) {
     const { data: members } = await supabase.from('team_members').select('*').eq('team_id', team.id);
     const count = members?.length || 0;
     const list = count > 0 ? members.map((m, i) => `${i+1}. สมาชิก (${m.role})`).join('\n') : 'ยังไม่มีสมาชิกครับ';
-    return reply(event, [{ type: 'text', text: `👥 สมาชิกทีม "${teamName}"\n\n${list}\n\nรวม ${count} คนครับ` }]);
+    return reply(event, [flexText(`👥 สมาชิกทีม "${teamName}"\n\n${list}\n\nรวม ${count} คนครับ`)]);
   }
   if (msg === 'แจ้งปัญหาการใช้งาน' || msg === 'แนะนำฟีเจอร์' || msg === 'สอบถามแผนและราคา' || msg === 'อื่นๆ') {
     return reply(event, [{ type: 'text', text: `✅ รับเรื่องแล้วครับ!
@@ -340,21 +346,16 @@ async function handleEvent(event) {
   console.log('Claude parsed:', JSON.stringify(parsed));
 
   if (!parsed || !parsed.isAppointment) {
-    return reply(event, [{
-      type: 'text', text: 'พิมพ์ "เมนู" เพื่อดูคำสั่งครับ 😊\n\nหรือบอกนัดหมายได้เลย เช่น\n"พรุ่งนี้ บ่ายโมง ประชุมทีม"',
-      quickReply: { items: [
-        { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
-        { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
-      ]},
-    }]);
+    return reply(event, [flexText('💬 ไม่เข้าใจครับ\n\nบอกนัดหมายได้เลย เช่น "พรุ่งนี้ บ่ายโมง ประชุมทีม"\nหรือพิมพ์ "เมนู" เพื่อดูคำสั่ง', [
+      { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
+      { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
+    ])]);
   }
   if (!parsed.date) {
-    return reply(event, [{ type: 'text', text: `📅 "${parsed.title}" — วันไหนครับ?`,
-      quickReply: { items: [
-        { type: 'action', action: { type: 'message', label: 'วันนี้', text: `${parsed.title} วันนี้ ${parsed.time || ''}`.trim() } },
-        { type: 'action', action: { type: 'message', label: 'พรุ่งนี้', text: `${parsed.title} พรุ่งนี้ ${parsed.time || ''}`.trim() } },
-      ]},
-    }]);
+    return reply(event, [flexText(`📅 "${parsed.title}" — วันไหนครับ?`, [
+      { type: 'action', action: { type: 'message', label: 'วันนี้', text: `${parsed.title} วันนี้ ${parsed.time || ''}`.trim() } },
+      { type: 'action', action: { type: 'message', label: 'พรุ่งนี้', text: `${parsed.title} พรุ่งนี้ ${parsed.time || ''}`.trim() } },
+    ])]);
   }
   if (!parsed.time) return reply(event, [flexText(`⏰ "${parsed.title}" — กี่โมงครับ?\n\nเช่น: 14:00 / บ่ายสอง / 1400`)]);
   return await saveAndReply(event, userId, parsed);
@@ -414,16 +415,24 @@ async function deleteAppointment(event, userId, id) {
   const { data } = await supabase.from('appointments').select('title').eq('id', id).single();
   const { error } = await supabase.from('appointments').delete().eq('id', id);
   if (error) return reply(event, [flexText(`❌ ลบไม่สำเร็จ: ${error.message}`)]);
-  return reply(event, [{ type: 'text', text: `🗑️ ลบ "${data?.title}" แล้วครับ`,
-    quickReply: { items: [
+  return reply(event, [flexText(`🗑️ ลบ "${data?.title}" แล้วครับ`, [
       { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
       { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
-    ]},
-  }]);
+    ])]);
 }
 
 async function saveAndReply(event, userId, data) {
   const { title, date, time, location } = data;
+  // เช็คนัดซ้ำ
+  const { data: existing } = await supabase.from('appointments').select('id')
+    .eq('user_id', userId).eq('meeting_date', date).eq('start_time', `${time}:00`).eq('title', title);
+  if (existing && existing.length > 0) {
+    return reply(event, [flexText(`⚠️ นัดหมายซ้ำครับ
+
+"${title}" วันที่ ${date} เวลา ${time} มีอยู่แล้วในระบบครับ`, [
+      { type: 'action', action: { type: 'message', label: '📅 ดูกำหนดการ', text: 'กำหนดการ' } },
+    ])]);
+  }
   const { error } = await supabase.from('appointments').insert({
     user_id: userId, title, meeting_date: date, start_time: `${time}:00`, end_time: null, location: location || null, notes: data.notes || null,
   });
@@ -440,13 +449,15 @@ async function getTodayAppointments(userId) {
 }
 
 async function getAllAppointments(userId) {
-  const now = new Date();
-  const firstDay = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
-  const lastDay = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+  const todayStr = formatDate(now);
+  const future = new Date(now);
+  future.setMonth(future.getMonth() + 3);
+  const futureStr = formatDate(future);
   const { data, error } = await supabase.from('appointments').select('*')
     .eq('user_id', userId)
-    .gte('meeting_date', firstDay)
-    .lte('meeting_date', lastDay)
+    .gte('meeting_date', todayStr)
+    .lte('meeting_date', futureStr)
     .order('meeting_date', { ascending: true })
     .order('start_time', { ascending: true });
   if (error) return [];
