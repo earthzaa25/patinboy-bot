@@ -95,7 +95,15 @@ async function checkReminders() {
         }
       }
     }
-    // ── Auto-delete นัดที่ผ่านไปแล้ว 1 ชั่วโมง ──
+    // ── Auto-delete นัดที่ผ่านไปแล้ว (วันเก่า + วันนี้ที่เกิน 1 ชั่วโมง) ──
+    // ลบนัดวันที่ผ่านมาแล้วทั้งหมด
+    const { data: pastApts } = await supabase.from('appointments').select('id, title, meeting_date, start_time')
+      .lt('meeting_date', todayStr);
+    for (const apt of (pastApts || [])) {
+      await supabase.from('appointments').delete().eq('id', apt.id);
+      console.log(`🗑️ Auto-delete (past): ${apt.title} (${apt.meeting_date})`);
+    }
+    // ลบนัดวันนี้ที่เกิน 1 ชั่วโมงไปแล้ว
     const { data: oldApts } = await supabase.from('appointments').select('id, title, meeting_date, start_time')
       .eq('meeting_date', todayStr);
     for (const apt of (oldApts || [])) {
@@ -104,7 +112,7 @@ async function checkReminders() {
       const nowMins = now.getHours() * 60 + now.getMinutes();
       if (nowMins >= aptMins + 60) {
         await supabase.from('appointments').delete().eq('id', apt.id);
-        console.log(`🗑️ Auto-delete: ${apt.title} (${apt.start_time.slice(0,5)})`);
+        console.log(`🗑️ Auto-delete (today): ${apt.title} (${apt.start_time.slice(0,5)})`);
       }
     }
   } catch (err) { console.error('checkReminders error:', err); }
