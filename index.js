@@ -169,8 +169,9 @@ async function parseAppointmentWithClaude(text) {
 - ออฟฟิศ, office = ที่ทำงาน
 
 ตอบเฉพาะ JSON เท่านั้น ไม่มีคำอธิบาย:
-{"isAppointment":true/false,"title":"ชื่อนัดหมาย","date":"YYYY-MM-DD หรือ null","time":"HH:MM หรือ null","location":"สถานที่ หรือ null"}
+{"isAppointment":true/false,"title":"ชื่อนัดหมาย","date":"YYYY-MM-DD หรือ null","time":"HH:MM หรือ null","location":"สถานที่ หรือ null","notes":"รายละเอียดเพิ่มเติม หรือ null"}
 
+ตัวอย่าง: "ออกกำลังกาย 6 โมงเย็น ขาช่วงล่าง" → title="ออกกำลังกาย", time="18:00", notes="ขาช่วงล่าง"
 ถ้าไม่เกี่ยวกับนัดหมายเลย ให้ isAppointment=false`;
 
   try {
@@ -415,11 +416,11 @@ async function deleteAppointment(event, userId, id) {
 async function saveAndReply(event, userId, data) {
   const { title, date, time, location } = data;
   const { error } = await supabase.from('appointments').insert({
-    user_id: userId, title, meeting_date: date, start_time: `${time}:00`, end_time: null, location: location || null,
+    user_id: userId, title, meeting_date: date, start_time: `${time}:00`, end_time: null, location: location || null, notes: data.notes || null,
   });
   if (error) return reply(event, [flexText(`❌ บันทึกไม่สำเร็จ: ${error.message}`)]);
   const plan = await getUserPlan(userId);
-  return reply(event, [flexSaveConfirm(title, date, time, '✅ บันทึกนัดหมายแล้ว!', canUsePremium(plan))]);
+  return reply(event, [flexSaveConfirm(title, date, time, '✅ บันทึกนัดหมายแล้ว!', canUsePremium(plan), data.notes || null)]);
 }
 
 async function getTodayAppointments(userId) {
@@ -593,7 +594,7 @@ function makeCalendarUrls(title, date, time) {
 }
 
 // ── FLEX: Save Confirm ──
-function flexSaveConfirm(title, date, time, headerText = '✅ บันทึกนัดหมายแล้ว!', isPremium = false) {
+function flexSaveConfirm(title, date, time, headerText = '✅ บันทึกนัดหมายแล้ว!', isPremium = false, notes = null) {
   const { google, outlook } = makeCalendarUrls(title, date, time);
   return {
     type: 'flex', altText: `✅ ${title}`,
@@ -625,6 +626,11 @@ function flexSaveConfirm(title, date, time, headerText = '✅ บันทึก
                   { type: 'text', text: '⏰', flex: 0, size: 'sm' },
                   { type: 'text', text: time, flex: 1, size: 'sm', color: '#6b7280' },
                 ]},
+              ...(notes ? [{ type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center',
+                contents: [
+                  { type: 'text', text: '📝', flex: 0, size: 'sm' },
+                  { type: 'text', text: notes, flex: 1, size: 'sm', color: '#6b7280', wrap: true },
+                ]}] : []),
             ],
           },
           ...(isPremium ? [
