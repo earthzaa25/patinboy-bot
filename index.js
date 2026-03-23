@@ -1070,7 +1070,16 @@ function flexContact() {
 async function getOrCreateUser(userId) {
   const { data, error } = await supabase.from('users').select('*').eq('line_user_id', userId).single();
   if (data) return data;
-  const { data: newUser } = await supabase.from('users').insert({ line_user_id: userId, plan: 'free' }).select().single();
+  // ดึง display_name จาก LINE API
+  let displayName = null;
+  try {
+    const profileRes = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+    });
+    const profile = await profileRes.json();
+    displayName = profile.displayName || null;
+  } catch(e) {}
+  const { data: newUser } = await supabase.from('users').insert({ line_user_id: userId, plan: 'free', display_name: displayName }).select().single();
   return newUser;
 }
 
