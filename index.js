@@ -1532,7 +1532,8 @@ function flexText(text, quickReplyItems = null) {
   return msg;
 }
 
-// ── Admin API: CORS + Chat Preview ──
+// ── Admin API: CORS + JSON parser + Chat Preview ──
+app.use('/api', express.json());
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
