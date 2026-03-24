@@ -59,15 +59,13 @@ async function checkReminders() {
       .eq('meeting_date', todayStr).eq('start_time', targetTime).eq('reminded', false);
 
     for (const apt of (freeApts || [])) {
-      const plan = await getUserPlan(apt.user_id);
-      // Free plan หรือไม่มี custom reminders → ใช้ 30 นาที default
-      if (!apt.reminders || apt.reminders.length === 0) {
-        try {
-          await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
-          await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
-          console.log(`✅ แจ้งเตือน (30 นาที): ${apt.title}`);
-        } catch (err) { console.error('Push error:', err.message); }
-      }
+      // ถ้ามี custom reminders ข้ามไปให้ custom loop จัดการ
+      if (apt.reminders && apt.reminders.length > 0) continue;
+      try {
+        await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
+        await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
+        console.log(`✅ แจ้งเตือน (30 นาที): ${apt.title}`);
+      } catch (err) { console.error('Push error:', err.message); }
     }
 
     // ดึงนัดที่มี custom reminders (Personal/Business)
