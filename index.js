@@ -1534,5 +1534,43 @@ function flexText(text, quickReplyItems = null) {
   return msg;
 }
 
+// ── Admin API: CORS + Chat Preview ──
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-key');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+app.post('/api/chat-preview', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
+  if (!ADMIN_SECRET_KEY) return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า ADMIN_SECRET_KEY ใน Railway env ครับ' });
+  if (adminKey !== ADMIN_SECRET_KEY) return res.status(401).json({ error: 'Admin Key ไม่ถูกต้องครับ' });
+
+  const { model, max_tokens, system, messages } = req.body;
+  if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages ไม่ถูกต้องครับ' });
+
+  try {
+    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: model || 'claude-sonnet-4-6',
+        max_tokens: max_tokens || 500,
+        system: system || 'คุณคือ ปฏิทินBoy ช่วยจัดการนัดหมายครับ',
+        messages,
+      }),
+    });
+    const data = await anthropicRes.json();
+    if (!anthropicRes.ok) return res.status(anthropicRes.status).json({ error: data.error?.message || 'Anthropic API error' });
+    res.json(data);
+  } catch (err) {
+    console.error('[chat-preview] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ ปฏิทินBoy Bot รันที่ port ${PORT}`));
