@@ -346,6 +346,37 @@ async function checkReminders() {
 }
 setInterval(checkReminders, 60 * 1000);
 
+// ── AI Daily Briefing ทุกเช้า 8:00 น. ──
+async function sendDailyBriefings() {
+  try {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const h = now.getHours(); const m = now.getMinutes();
+    if (h !== 8 || m !== 0) return;
+
+    const todayStr = formatDate(now);
+    const { data: users } = await supabase.from('users').select('line_user_id, plan, plan_expires_at');
+    if (!users) return;
+
+    for (const user of users) {
+      // เฉพาะ Personal+ เท่านั้น
+      if (user.plan !== 'personal' && user.plan !== 'business') continue;
+      if (user.plan_expires_at && new Date(user.plan_expires_at) < now) continue;
+
+      try {
+        const { data: apts } = await supabase.from('appointments').select('*')
+          .eq('user_id', user.line_user_id).eq('meeting_date', todayStr).order('start_time');
+        
+        const summary = await generateDailySummary(apts || [], now);
+        if (summary) {
+          await client.pushMessage({ to: user.line_user_id, messages: [flexDailyBriefing(summary, apts || [], todayStr)] });
+          console.log(`📊 Daily briefing sent: ${user.line_user_id}`);
+        }
+      } catch(e) { console.error('Briefing error:', user.line_user_id, e.message); }
+    }
+  } catch(e) { console.error('sendDailyBriefings error:', e); }
+}
+setInterval(sendDailyBriefings, 60 * 1000);
+
 // ── State Management ──
 const userState = {};
 
@@ -549,6 +580,85 @@ async function handleEvent(event) {
   return await saveAndReply(event, userId, parsed);
 }
 
+
+// ── AI Daily Summary ──
+async function generateDailySummary(apts, now) {
+  const dayNames = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  const dayName = dayNames[now.getDay()];
+
+  if (apts.length === 0) {
+    return `วัน${dayName}นี้ว่างทั้งวันเลยครับ ไม่มีนัดหมายที่กำหนดไว้ 😊`;
+  }
+
+  const aptText = apts.map(a => `- ${a.start_time.slice(0,5)}: ${a.title}${a.location ? (' ('+a.location+')') : ''}${a.notes ? (' - '+a.notes) : ''}`).join('\n');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6', max_tokens: 300,
+        system: `คุณคือ "ปฏิทินBoy" ผู้ช่วยส่วนตัวที่เป็นกันเอง ร่าเริง สุภาพ
+สรุปตารางงานวันนี้ให้เจ้านายฟังแบบสั้นๆ กระชับ ไม่เกิน 3 บรรทัด
+ให้กำลังใจเล็กน้อยก่อนเริ่มวัน ห้ามใช้ bullet point ตอบเป็นข้อความธรรมดาเท่านั้น`,
+        messages: [{ role: 'user', content: `วัน${dayName} มีนัด ${apts.length} รายการ:
+${aptText}
+
+สรุปให้หน่อยครับ` }],
+      }),
+    });
+    const data = await res.json();
+    return data.content?.[0]?.text || null;
+  } catch(e) { return null; }
+}
+
+// ── FLEX: Daily Briefing Card ──
+function flexDailyBriefing(summary, apts, todayStr) {
+  const now = new Date(todayStr + 'T00:00:00');
+  const dayNames = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  const monthNames = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const dateLabel = `${dayNames[now.getDay()]}ที่ ${now.getDate()} ${monthNames[now.getMonth()]}`;
+
+  const aptItems = apts.slice(0, 5).map(apt => ({
+    type: 'box', layout: 'horizontal', paddingAll: '8px', margin: 'xs',
+    contents: [
+      { type: 'text', text: apt.start_time.slice(0,5), size: 'xs', color: '#06C755', flex: 0, weight: 'bold' },
+      { type: 'text', text: apt.title, size: 'xs', color: '#374151', flex: 1, paddingStart: '8px', wrap: true },
+    ],
+  }));
+
+  return {
+    type: 'flex', altText: `📊 สรุปงานวันนี้ ${dateLabel}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '📊 Good Morning!', size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: dateLabel, size: 'lg', weight: 'bold', color: '#06C755', margin: 'xs' },
+          { type: 'text', text: `${apts.length} นัดหมายวันนี้`, size: 'xs', color: '#64748b' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+        contents: [
+          { type: 'text', text: summary, size: 'sm', color: '#374151', wrap: true },
+          ...(apts.length > 0 ? [
+            { type: 'separator', margin: 'md' },
+            ...aptItems,
+          ] : []),
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+        contents: [
+          { type: 'button', style: 'primary', color: '#06C755', height: 'sm', action: { type: 'message', label: '📅 ดูกำหนดการ', text: 'กำหนดการ' } },
+          { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '+ เพิ่มนัดหมาย', text: 'เพิ่มนัด' } },
+        ],
+      },
+    },
+  };
+}
 
 // ── FLEX: Text Card ──
 function flexText(text, quickReplyItems = null) {
