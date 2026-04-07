@@ -154,7 +154,17 @@ async function parseAppointmentWithClaude(text) {
   const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = formatDate(tomorrow);
 
+  const nowYearCE = new Date().getFullYear();
+  const nowYearBE = nowYearCE + 543;
+
   const systemPrompt = `คุณเป็น AI วิเคราะห์ข้อความนัดหมายภาษาไทย วันนี้คือ ${todayStr} พรุ่งนี้คือ ${tomorrowStr}
+ปีปัจจุบัน: ค.ศ. ${nowYearCE} (พ.ศ. ${nowYearBE})
+
+กฎการแปลงปี (สำคัญมาก):
+- ถ้าเห็นปี พ.ศ. (เช่น 2567, 2568, 2569) → แปลงเป็น ค.ศ. โดย ลบ 543 เช่น 2567→2024, 2568→2025, 2569→2026
+- ถ้าเห็นปี ค.ศ. (เช่น 2024, 2025, 2026) → ใช้ตรงๆ
+- ถ้าปีที่แปลงแล้วอยู่ในอนาคตเกิน 1 ปี หรือในอดีตเกิน 1 ปี → ให้ตั้ง needsConfirm=true
+- ถ้าไม่แน่ใจว่าพิมพ์ปีถูกหรือไม่ → ให้ตั้ง needsConfirm=true พร้อมระบุ confirmMsg ว่าอยากถามอะไร
 
 กฎเวลา: เที่ยง=12:00, บ่ายโมง=13:00, บ่ายสอง=14:00, บ่ายสาม=15:00, บ่ายสี่=16:00, บ่ายห้า=17:00
 หกโมงเย็น=18:00, ทุ่ม=19:00, สองทุ่ม=20:00, สามทุ่ม=21:00, สี่ทุ่ม=22:00, ห้าทุ่ม=23:00
@@ -162,12 +172,15 @@ async function parseAppointmentWithClaude(text) {
 3pm=15:00, 9am=09:00, เวลาทหาร 0800=08:00, 1430=14:30
 
 กฎวัน: วันนี้=${todayStr}, พรุ่งนี้=${tomorrowStr}, มะรืน=วันหลังพรุ่งนี้
-DD/MM หรือ DD/MM/YYYY → YYYY-MM-DD
+DD/MM หรือ DD/MM/YYYY → YYYY-MM-DD (ใช้ปีที่แปลงแล้ว)
 
 ตอบเฉพาะ JSON เท่านั้น:
-{"isAppointment":true/false,"title":"ชื่อนัด","date":"YYYY-MM-DD หรือ null","time":"HH:MM หรือ null","location":"สถานที่ หรือ null","notes":"รายละเอียด หรือ null"}
+{"isAppointment":true/false,"title":"ชื่อนัด","date":"YYYY-MM-DD หรือ null","time":"HH:MM หรือ null","location":"สถานที่ หรือ null","notes":"รายละเอียด หรือ null","needsConfirm":false,"confirmMsg":"คำถามยืนยัน หรือ null"}
 
-ตัวอย่าง: "ออกกำลังกาย 6 โมงเย็น ขาช่วงล่าง" → title="ออกกำลังกาย", time="18:00", notes="ขาช่วงล่าง"`;
+ตัวอย่าง 1: "ออกกำลังกาย 6 โมงเย็น" → title="ออกกำลังกาย", time="18:00", needsConfirm=false
+ตัวอย่าง 2: "ประชุม 9 เม.ย. 67 เวลา 0900" → date="2024-04-09", time="09:00", needsConfirm=false
+ตัวอย่าง 3: "ประชุม 9 เม.ย. 2569 เวลา 0900" → date="2026-04-09" แต่ถ้าปีนี้คือ 2026 ให้ needsConfirm=false
+ตัวอย่าง 4: "ประชุม 9 เม.ย. 2571" → อนาคตเกิน 1 ปี → needsConfirm=true, confirmMsg="วันที่ 9 เม.ย. 2571 (ค.ศ. 2028) ถูกต้องไหมครับ? หรือตั้งใจพิมพ์ปีอื่น?"`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -427,6 +440,16 @@ async function handleEvent(event) {
       return reply(event, [flexText(`✅ สร้างทีม "${teamName}" สำเร็จแล้วครับ!`, [
         { type: 'action', action: { type: 'message', label: '👥 จัดการทีม', text: 'จัดการทีม' } },
       ])]);
+    }
+
+    if (state.step === 'confirmingDate') {
+      if (msg === 'ยืนยันบันทึก') {
+        const p = state.parsed;
+        delete userState[userId];
+        return await saveAndReply(event, userId, p);
+      }
+      delete userState[userId];
+      return reply(event, [flexText('❌ ยกเลิกแล้วครับ กรุณาพิมพ์นัดหมายใหม่อีกครั้ง')]);
     }
 
     if (state.step === 'editing') {
