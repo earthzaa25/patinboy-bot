@@ -111,8 +111,15 @@ async function getTodayAppointments(userId) {
 async function getAllAppointments(userId) {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
   const todayStr = formatDate(now);
-  const future = new Date(now); future.setMonth(future.getMonth() + 3);
-  const { data } = await supabase.from('appointments').select('*').eq('user_id', userId).gte('meeting_date', todayStr).lte('meeting_date', formatDate(future)).order('meeting_date').order('start_time');
+  const future = new Date(now);
+  future.setDate(future.getDate() + 90); // 90 วันข้างหน้า แทนการใช้ setMonth
+  const futureStr = formatDate(future);
+  const { data } = await supabase.from('appointments').select('*')
+    .eq('user_id', userId)
+    .gte('meeting_date', todayStr)
+    .lte('meeting_date', futureStr)
+    .order('meeting_date', { ascending: true })
+    .order('start_time', { ascending: true });
   return data || [];
 }
 
@@ -347,11 +354,15 @@ async function checkReminders() {
 setInterval(checkReminders, 60 * 1000);
 
 // ── AI Daily Briefing ทุกเช้า 8:00 น. ──
+let briefingSentDate = null;
 async function sendDailyBriefings() {
   try {
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
     const h = now.getHours(); const m = now.getMinutes();
     if (h !== 8 || m !== 0) return;
+    const todayKey = formatDate(now);
+    if (briefingSentDate === todayKey) return; // ส่งแล้ววันนี้ ข้ามเลย
+    briefingSentDate = todayKey;
 
     const todayStr = formatDate(now);
     const { data: users } = await supabase.from('users').select('line_user_id, plan, plan_expires_at');
