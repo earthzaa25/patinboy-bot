@@ -395,7 +395,7 @@ async function sendDailyBriefings() {
           await client.pushMessage({ to: user.line_user_id, messages: [flexDailyBriefing(summary, apts || [], todayStr)] });
           console.log(`📊 Daily briefing sent: ${user.line_user_id}`);
         }
-      } catch(e) { console.error('Briefing error:', user.line_user_id, e.message); }
+      } catch(e) { console.error('Briefing error:', user.line_user_id, e.message, e.body || ''); }
     }
   } catch(e) { console.error('sendDailyBriefings error:', e); }
 }
@@ -657,7 +657,7 @@ function flexDailyBriefing(summary, apts, todayStr) {
     type: 'box', layout: 'horizontal', paddingAll: '8px', margin: 'xs',
     contents: [
       { type: 'text', text: apt.start_time.slice(0,5), size: 'xs', color: '#06C755', flex: 0, weight: 'bold' },
-      { type: 'text', text: apt.title, size: 'xs', color: '#374151', flex: 1, paddingStart: '8px', wrap: true },
+      { type: 'text', text: apt.title || 'นัดหมาย', size: 'xs', color: '#374151', flex: 1, wrap: true },
     ],
   }));
 
