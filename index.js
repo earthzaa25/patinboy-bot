@@ -104,26 +104,42 @@ function canUseBusiness(plan) { return plan === 'business'; }
 // ── Appointments ──
 async function getTodayAppointments(userId) {
   const today = formatDate(new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })));
-  const { data } = await supabase.from('appointments').select('*').eq('user_id', userId).eq('meeting_date', today).order('start_time', { ascending: true });
-  return data || [];
+  // ดึงนัดส่วนตัว
+  const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).eq('meeting_date', today).order('start_time', { ascending: true });
+  // ดึงนัดทีมที่เป็นสมาชิก
+  const { data: memberships } = await supabase.from('team_members').select('team_id').eq('line_user_id', userId);
+  const teamIds = (memberships || []).map(m => m.team_id);
+  let teamApts = [];
+  if (teamIds.length > 0) {
+    const { data: ta } = await supabase.from('appointments').select('*').in('team_id', teamIds).eq('meeting_date', today).order('start_time', { ascending: true });
+    teamApts = (ta || []).filter(a => a.user_id !== userId); // ไม่ซ้ำของตัวเอง
+  }
+  const all = [...(personal || []), ...teamApts];
+  all.sort((a, b) => a.start_time.localeCompare(b.start_time));
+  return all;
 }
 
 async function getAllAppointments(userId) {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
   const todayStr = formatDate(now);
-  const future = new Date(now);
-  future.setDate(future.getDate() + 90); // 90 วันข้างหน้า แทนการใช้ setMonth
+  const future = new Date(now); future.setDate(future.getDate() + 90);
   const futureStr = formatDate(future);
-  const { data } = await supabase.from('appointments').select('*')
-    .eq('user_id', userId)
-    .gte('meeting_date', todayStr)
-    .lte('meeting_date', futureStr)
-    .order('meeting_date', { ascending: true })
-    .order('start_time', { ascending: true });
-  return data || [];
+  // นัดส่วนตัว
+  const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).gte('meeting_date', todayStr).lte('meeting_date', futureStr).order('meeting_date').order('start_time');
+  // นัดทีม
+  const { data: memberships } = await supabase.from('team_members').select('team_id').eq('line_user_id', userId);
+  const teamIds = (memberships || []).map(m => m.team_id);
+  let teamApts = [];
+  if (teamIds.length > 0) {
+    const { data: ta } = await supabase.from('appointments').select('*').in('team_id', teamIds).gte('meeting_date', todayStr).lte('meeting_date', futureStr).order('meeting_date').order('start_time');
+    teamApts = (ta || []).filter(a => a.user_id !== userId);
+  }
+  const all = [...(personal || []), ...teamApts];
+  all.sort((a, b) => a.meeting_date.localeCompare(b.meeting_date) || a.start_time.localeCompare(b.start_time));
+  return all;
 }
 
-async function saveAndReply(event, userId, data) {
+async function saveAndReply(event, userId, data, teamId = null) {
   const { title, date, time, location } = data;
   const { data: existing } = await supabase.from('appointments').select('id').eq('user_id', userId).eq('meeting_date', date).eq('start_time', `${time}:00`).eq('title', title);
   if (existing && existing.length > 0) {
@@ -131,10 +147,11 @@ async function saveAndReply(event, userId, data) {
       { type: 'action', action: { type: 'message', label: '📅 ดูกำหนดการ', text: 'กำหนดการ' } },
     ])]);
   }
-  const { error } = await supabase.from('appointments').insert({ user_id: userId, title, meeting_date: date, start_time: `${time}:00`, location: location || null, notes: data.notes || null });
+  const { error } = await supabase.from('appointments').insert({ user_id: userId, title, meeting_date: date, start_time: `${time}:00`, location: location || null, notes: data.notes || null, team_id: teamId || null });
   if (error) return reply(event, [flexText(`❌ บันทึกไม่สำเร็จ: ${error.message}`)]);
   const plan = await getUserPlan(userId);
-  return reply(event, [flexSaveConfirm(title, date, time, '✅ บันทึกนัดหมายแล้วครับ', canUsePremium(plan), data.notes || null)]);
+  const label = teamId ? '✅ บันทึกลงทีมแล้วครับ' : '✅ บันทึกนัดหมายแล้วครับ';
+  return reply(event, [flexSaveConfirm(title, date, time, label, canUsePremium(plan), data.notes || null)]);
 }
 
 async function deleteAppointment(event, userId, id) {
@@ -440,6 +457,24 @@ async function handleEvent(event) {
       return reply(event, [flexText(`✅ สร้างทีม "${teamName}" สำเร็จแล้วครับ!`, [
         { type: 'action', action: { type: 'message', label: '👥 จัดการทีม', text: 'จัดการทีม' } },
       ])]);
+    }
+
+    if (state.step === 'choosingTarget') {
+      const p = state.parsed;
+      if (msg === 'บันทึกส่วนตัว') {
+        delete userState[userId];
+        return await saveAndReply(event, userId, p, null);
+      }
+      if (msg.startsWith('บันทึกทีม:')) {
+        const parts = msg.split(':');
+        const teamId = parts[1];
+        const teamName = parts[2];
+        delete userState[userId];
+        await saveAndReply(event, userId, p, teamId);
+        return;
+      }
+      delete userState[userId];
+      return reply(event, [flexText('❌ ยกเลิกแล้วครับ')]);
     }
 
     if (state.step === 'confirmingDate') {
