@@ -188,6 +188,21 @@ async function parseAppointmentWithClaude(text) {
     }
   } catch(e) {}
 
+  // โหลด examples ที่ approved จาก Supabase (ระดับ 2)
+  try {
+    const { data: dbExamples } = await supabase
+      .from('ai_examples')
+      .select('input, output')
+      .eq('approved', true)
+      .eq('source', 'manual')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (dbExamples && dbExamples.length > 0) {
+      const dbStr = dbExamples.map(e => `INPUT: "${e.input}"\nOUTPUT: ${JSON.stringify(e.output)}`).join('\n\n');
+      extraExamples = (extraExamples ? extraExamples + '\n\n' : '') + dbStr;
+    }
+  } catch(e) {}
+
   const systemPrompt = `คุณเป็น AI วิเคราะห์ข้อความนัดหมายภาษาไทย วันนี้คือ ${todayStr} พรุ่งนี้คือ ${tomorrowStr}
 ปีปัจจุบัน: ค.ศ. ${nowYearCE} (พ.ศ. ${nowYearBE})
 
@@ -569,6 +584,8 @@ async function handleEvent(event) {
   // ── Claude AI Parse ──
   const parsed = await parseAppointmentWithClaude(msg);
   if (!parsed || !parsed.isAppointment) {
+    // บันทึกกรณีที่ parse ไม่สำเร็จ เพื่อให้ Admin ดูและสอนเพิ่มได้
+    supabase.from('ai_examples').insert({ input: msg, output: null, source: 'failed', approved: false }).then(() => {});
     return reply(event, [flexText('💬 ไม่เข้าใจครับ\n\nบอกนัดหมายได้เลย เช่น "พรุ่งนี้ บ่ายโมง ประชุมทีม"\nหรือพิมพ์ "เมนู" เพื่อดูคำสั่ง', [
       { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
       { type: 'action', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
@@ -606,6 +623,9 @@ async function handleEvent(event) {
       ...teamItems,
     ])]);
   }
+
+  // บันทึก example อัตโนมัติเมื่อ parse สำเร็จ (ระดับ 2)
+  supabase.from('ai_examples').insert({ input: msg, output: parsed, source: 'auto', approved: true }).then(() => {});
 
   return await saveAndReply(event, userId, parsed);
 }
