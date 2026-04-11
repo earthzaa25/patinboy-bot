@@ -1,0 +1,5 @@
+INPUT: "ประชุมคณะกรรมการ วันจันทร์ที่ 14 เม.ย.68 เวลา 1300-1500 ณ ห้องประชุม 201 ชั้น 2 อาคาร A"
+OUTPUT: {"isAppointment":true,"title":"ประชุมคณะกรรมการ","date":"2025-04-14","time":"13:00","location":"ห้องประชุม 201 ชั้น 2 อาคาร A","notes":null,"needsConfirm":false,"confirmMsg":null}
+
+INPUT: "Training Google Meet วันอังคาร 22 เม.ย. 2568 10:00-12:00 https://meet.google.com/xxx-yyy-zzz"
+OUTPUT: {"isAppointment":true,"title":"Training","date":"2025-04-22","time":"10:00","location":"Google Meet","notes":"https://meet.google.com/xxx-yyy-zzz","needsConfirm":false,"confirmMsg":null}
