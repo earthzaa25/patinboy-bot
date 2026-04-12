@@ -37,8 +37,16 @@ app.use((req, res, next) => {
 });
 
 // ── Calendar API ──
+app.options('/api/calendar', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(200);
+});
 app.get('/api/calendar', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   const { token } = req.query;
   if (!token) return res.status(400).json({ error: 'token required' });
   const { data: tokenData } = await supabase.from('user_tokens').select('line_user_id').eq('token', token).single();
