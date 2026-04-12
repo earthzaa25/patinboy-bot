@@ -376,25 +376,37 @@ async function checkReminders() {
 setInterval(checkReminders, 60 * 1000);
 
 // ── AI Daily Briefing ──
-let briefingSentDate = null;
 async function sendDailyBriefings() {
   try {
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-    const h = now.getHours(); const m = now.getMinutes();
-    if (h !== 8 || m !== 0) return;
-    const todayKey = formatDate(now);
-    if (briefingSentDate === todayKey) return;
-    briefingSentDate = todayKey;
     const todayStr = formatDate(now);
-    const { data: users } = await supabase.from('users').select('line_user_id, plan, plan_expires_at');
+    const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+    // ดึง users ที่เป็น Personal+ และยังไม่ได้ส่งวันนี้
+    const { data: users } = await supabase.from('users')
+      .select('line_user_id, plan, plan_expires_at, briefing_time, briefing_sent_date')
+      .in('plan', ['personal', 'business']);
     if (!users) return;
+
     for (const user of users) {
-      if (user.plan !== 'personal' && user.plan !== 'business') continue;
+      // เช็ค plan หมดอายุ
       if (user.plan_expires_at && new Date(user.plan_expires_at) < now) continue;
+      // เช็คว่าส่งแล้ววันนี้หรือยัง (เก็บใน Supabase ป้องกัน restart)
+      if (user.briefing_sent_date === todayStr) continue;
+      // เช็คเวลาที่ตั้งไว้ (default 08:00)
+      const sendTime = user.briefing_time || '08:00';
+      if (currentTime !== sendTime) continue;
+
       try {
-        const { data: apts } = await supabase.from('appointments').select('*').eq('user_id', user.line_user_id).eq('meeting_date', todayStr).order('start_time');
+        const { data: apts } = await supabase.from('appointments').select('*')
+          .eq('user_id', user.line_user_id).eq('meeting_date', todayStr).order('start_time');
         const summary = await generateDailySummary(apts || [], now);
-        if (summary) { await client.pushMessage({ to: user.line_user_id, messages: [flexDailyBriefing(summary, apts || [], todayStr)] }); console.log(`📊 Daily briefing sent: ${user.line_user_id}`); }
+        if (summary) {
+          await client.pushMessage({ to: user.line_user_id, messages: [flexDailyBriefing(summary, apts || [], todayStr)] });
+          // บันทึกวันที่ส่งแล้วลง Supabase ป้องกันส่งซ้ำ
+          await supabase.from('users').update({ briefing_sent_date: todayStr }).eq('line_user_id', user.line_user_id);
+          console.log(`📊 Daily briefing sent: ${user.line_user_id} at ${sendTime}`);
+        }
       } catch(e) { console.error('Briefing error:', user.line_user_id, e.message); }
     }
   } catch(e) { console.error('sendDailyBriefings error:', e); }
@@ -528,6 +540,35 @@ async function handleEvent(event) {
   }
 
   // ── Menu Commands ──
+  // ตั้งเวลาสรุปงานเช้า
+  if (msg.startsWith('ตั้งเวลาสรุป')) {
+    const plan = await getUserPlan(userId);
+    if (!canUsePremium(plan)) return reply(event, [flexText('🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ')]);
+    const timeStr = msg.replace('ตั้งเวลาสรุป', '').trim();
+    if (!timeStr) {
+      const { data: u } = await supabase.from('users').select('briefing_time').eq('line_user_id', userId).single();
+      return reply(event, [flexText(`⏰ เวลาสรุปงานปัจจุบัน: ${u?.briefing_time || '08:00'}
+
+พิมพ์ "ตั้งเวลาสรุป HH:MM" เพื่อเปลี่ยนครับ`, [
+        { type: 'action', action: { type: 'message', label: '06:00 เช้า', text: 'ตั้งเวลาสรุป 06:00' } },
+        { type: 'action', action: { type: 'message', label: '07:00 เช้า', text: 'ตั้งเวลาสรุป 07:00' } },
+        { type: 'action', action: { type: 'message', label: '08:00 เช้า', text: 'ตั้งเวลาสรุป 08:00' } },
+        { type: 'action', action: { type: 'message', label: '09:00 เช้า', text: 'ตั้งเวลาสรุป 09:00' } },
+      ])]);
+    }
+    const timeMatch = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    if (!timeMatch) return reply(event, [flexText('❌ รูปแบบเวลาไม่ถูกต้องครับ กรุณาพิมพ์เช่น: ตั้งเวลาสรุป 07:00')]);
+    const h = parseInt(timeMatch[1]); const m = parseInt(timeMatch[2]);
+    if (h < 0 || h > 23 || m < 0 || m > 59) return reply(event, [flexText('❌ เวลาไม่ถูกต้องครับ')]);
+    const formatted = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    await supabase.from('users').update({ briefing_time: formatted, briefing_sent_date: null }).eq('line_user_id', userId);
+    return reply(event, [flexText(`✅ ตั้งเวลาสรุปงานเป็น ${formatted} น. แล้วครับ
+
+จะได้รับสรุปงานทุกเช้าเวลา ${formatted} น. ครับ 😊`, [
+      { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
+    ])]);
+  }
+
   if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
   if (msg === 'เมนู') return reply(event, [await flexMenu(userId)]);
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
@@ -785,6 +826,7 @@ async function flexMenu(userId) {
         contents: [
           menuRow('🗓', 'กำหนดการวันนี้', 'นัดหมายของวันนี้', 'กำหนดการ'),
           menuRow('📆', 'นัดหมายทั้งหมด', 'ดูนัดทั้งเดือน', 'นัดหมายทั้งหมด'),
+          menuRow('⏰', 'ตั้งเวลาสรุปงาน', isPremium ? 'ปรับเวลาสรุปตอนเช้า' : 'Personal+', isPremium ? 'ตั้งเวลาสรุป' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
           menuRow('📋', 'จัดการนัด', isPremium ? 'แก้ไข / ลบ / แจ้งเตือน' : 'แก้ไข / ลบ', 'จัดการนัด'),
           menuRow('📤', 'Export PDF/Excel', isPremium ? 'Personal' : 'Personal+', isPremium ? 'export' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
           menuRow('👥', 'จัดการทีม', isBusiness ? 'Business' : 'Business', isBusiness ? 'ทีม' : '', !isBusiness, 'purple', isBusiness ? 'purple' : null),
