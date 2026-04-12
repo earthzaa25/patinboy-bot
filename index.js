@@ -36,6 +36,33 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Calendar API ──
+app.get('/api/calendar', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'token required' });
+  const { data: tokenData } = await supabase.from('user_tokens').select('line_user_id').eq('token', token).single();
+  if (!tokenData) return res.status(404).json({ error: 'invalid token' });
+  const userId = tokenData.line_user_id;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+  const y = now.getFullYear(); const m = now.getMonth();
+  const firstDay = new Date(y, m, 1).toISOString().slice(0,10);
+  const lastDay = new Date(y, m+2, 0).toISOString().slice(0,10);
+  // ดึงนัดส่วนตัว
+  const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).gte('meeting_date', firstDay).lte('meeting_date', lastDay).order('meeting_date').order('start_time');
+  // ดึงนัดทีม
+  const { data: ownTeams } = await supabase.from('teams').select('id').eq('owner_line_id', userId);
+  const { data: memberships } = await supabase.from('team_members').select('team_id').eq('line_user_id', userId);
+  const teamIds = [...new Set([...(ownTeams||[]).map(t=>t.id), ...(memberships||[]).map(m=>m.team_id)])];
+  let teamApts = [];
+  if (teamIds.length > 0) {
+    const { data: ta } = await supabase.from('appointments').select('*').in('team_id', teamIds).gte('meeting_date', firstDay).lte('meeting_date', lastDay).order('meeting_date').order('start_time');
+    teamApts = (ta||[]).filter(a => a.user_id !== userId);
+  }
+  const { data: user } = await supabase.from('users').select('display_name, plan').eq('line_user_id', userId).single();
+  res.json({ appointments: [...(personal||[]), ...teamApts], user: user || {}, currentMonth: `${y}-${String(m+1).padStart(2,'0')}` });
+});
+
 app.post('/api/chat-preview', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
@@ -293,6 +320,15 @@ async function handleImageAppointment(event, userId, imageBase64) {
     const plan = await getUserPlan(userId);
     return reply(event, [flexSaveConfirm(first.title, first.date, first.time, '✅ บันทึกนัดหมายแล้วครับ', canUsePremium(plan), first.notes)]);
   } catch(e) { return reply(event, [flexText('❌ เกิดข้อผิดพลาดครับ ลองใหม่อีกครั้ง')]); }
+}
+
+// ── User Token (Web Calendar) ──
+async function getOrCreateToken(userId) {
+  const { data } = await supabase.from('user_tokens').select('token').eq('line_user_id', userId).single();
+  if (data) return data.token;
+  const token = require('crypto').randomBytes(24).toString('hex');
+  await supabase.from('user_tokens').insert({ line_user_id: userId, token });
+  return token;
 }
 
 // ── Team Management ──
@@ -569,6 +605,37 @@ async function handleEvent(event) {
     ])]);
   }
 
+  if (msg === 'ปฏิทิน' || msg === 'ดูปฏิทิน') {
+    const plan = await getUserPlan(userId);
+    if (!canUsePremium(plan)) return reply(event, [flexText('🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ กรุณาพิมพ์ "แพลน" เพื่อดูรายละเอียด')]);
+    const token = await getOrCreateToken(userId);
+    const calUrl = `https://patinboy.vercel.app/calendar?token=${token}`;
+    return reply(event, [{
+      type: 'flex', altText: '🗓 เปิดปฏิทินของคุณ',
+      contents: {
+        type: 'bubble',
+        header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+          contents: [
+            { type: 'text', text: '🗓 ปฏิทินBoy', size: 'xs', color: '#94a3b8' },
+            { type: 'text', text: 'ปฏิทินรายเดือน', size: 'xl', weight: 'bold', color: '#ffffff' },
+          ],
+        },
+        body: { type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+          contents: [
+            { type: 'text', text: 'กดปุ่มด้านล่างเพื่อเปิดปฏิทินของคุณครับ', size: 'sm', color: '#374151', wrap: true },
+            { type: 'text', text: '🔒 Link นี้เป็นของคุณเท่านั้น ไม่ต้อง login ใดๆ ทั้งสิ้น', size: 'xs', color: '#9ca3af', wrap: true, margin: 'sm' },
+          ],
+        },
+        footer: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+          contents: [
+            { type: 'button', style: 'primary', color: '#06C755', height: 'sm', action: { type: 'uri', label: '🗓 เปิดปฏิทินของฉัน', uri: calUrl } },
+            { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
+          ],
+        },
+      },
+    }]);
+  }
+
   if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
   if (msg === 'เมนู') return reply(event, [await flexMenu(userId)]);
   if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
@@ -826,6 +893,7 @@ async function flexMenu(userId) {
         contents: [
           menuRow('🗓', 'กำหนดการวันนี้', 'นัดหมายของวันนี้', 'กำหนดการ'),
           menuRow('📆', 'นัดหมายทั้งหมด', 'ดูนัดทั้งเดือน', 'นัดหมายทั้งหมด'),
+          menuRow('🗓', 'ปฏิทินรายเดือน', isPremium ? 'Calendar View บนเว็บ' : 'Personal+', isPremium ? 'ปฏิทิน' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
           menuRow('⏰', 'ตั้งเวลาสรุปงาน', isPremium ? 'ปรับเวลาสรุปตอนเช้า' : 'Personal+', isPremium ? 'ตั้งเวลาสรุป' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
           menuRow('📋', 'จัดการนัด', isPremium ? 'แก้ไข / ลบ / แจ้งเตือน' : 'แก้ไข / ลบ', 'จัดการนัด'),
           menuRow('📤', 'Export PDF/Excel', isPremium ? 'Personal' : 'Personal+', isPremium ? 'export' : '', !isPremium, 'blue', isPremium ? 'blue' : null),
