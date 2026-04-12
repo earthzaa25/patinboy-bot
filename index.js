@@ -609,7 +609,7 @@ async function handleEvent(event) {
     const plan = await getUserPlan(userId);
     if (!canUsePremium(plan)) return reply(event, [flexText('🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ กรุณาพิมพ์ "แพลน" เพื่อดูรายละเอียด')]);
     const token = await getOrCreateToken(userId);
-    const calUrl = `https://project-18eob.vercel.app/index.html?token=${token}`;
+    const calUrl = `https://project-18eob-c26i30kmz-earthzaa25s-projects.vercel.app/index.html?token=${token}`;
     return reply(event, [{
       type: 'flex', altText: '🗓 เปิดปฏิทินของคุณ',
       contents: {
