@@ -195,11 +195,11 @@ async function saveAndReply(event, userId, data, teamId = null) {
       { type: 'action', action: { type: 'message', label: '📅 ดูกำหนดการ', text: 'กำหนดการ' } },
     ])]);
   }
-  const { error } = await supabase.from('appointments').insert({ user_id: userId, title, meeting_date: date, start_time: `${time}:00`, location: location || null, notes: data.notes || null, team_id: teamId || null });
+  const { data: inserted, error } = await supabase.from('appointments').insert({ user_id: userId, title, meeting_date: date, start_time: `${time}:00`, location: location || null, notes: data.notes || null, team_id: teamId || null }).select().single();
   if (error) return reply(event, [flexText(`❌ บันทึกไม่สำเร็จ: ${error.message}`)]);
   const plan = await getUserPlan(userId);
   const label = teamId ? '✅ บันทึกลงทีมแล้วครับ' : '✅ บันทึกนัดหมายแล้วครับ';
-  return reply(event, [flexSaveConfirm(title, date, time, label, canUsePremium(plan), data.notes || null)]);
+  return reply(event, [flexSaveConfirm(title, date, time, label, canUsePremium(plan), data.notes || null, true, inserted?.id)]);
 }
 
 async function deleteAppointment(event, userId, id) {
@@ -344,6 +344,58 @@ async function getOrCreateToken(userId) {
   const token = require('crypto').randomBytes(24).toString('hex');
   await supabase.from('user_tokens').insert({ line_user_id: userId, token });
   return token;
+}
+
+// ── Recurring Appointments ──
+async function createRecurringAppointments(userId, data, recurringType, recurringDay, teamId = null) {
+  const { title, time, location, notes } = data;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+  const dates = [];
+
+  if (recurringType === 'daily') {
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now); d.setDate(d.getDate() + i);
+      dates.push(formatDate(d));
+    }
+  } else if (recurringType === 'weekly') {
+    // หาวันถัดไปที่ตรงกับ recurringDay (0=อา, 1=จ, ...)
+    for (let i = 0; i < 8; i++) {
+      const d = new Date(now); d.setDate(d.getDate() + i);
+      if (d.getDay() === recurringDay) {
+        for (let w = 0; w < 4; w++) {
+          const wd = new Date(d); wd.setDate(wd.getDate() + w * 7);
+          dates.push(formatDate(wd));
+        }
+        break;
+      }
+    }
+  } else if (recurringType === 'monthly') {
+    for (let m = 0; m < 3; m++) {
+      const d = new Date(now); d.setMonth(d.getMonth() + m);
+      dates.push(formatDate(d));
+    }
+  }
+
+  // บันทึกวันแรกก่อน ได้ parent_id
+  const { data: first, error } = await supabase.from('appointments').insert({
+    user_id: userId, title, meeting_date: dates[0],
+    start_time: `${time}:00`, location: location || null,
+    notes: notes || null, team_id: teamId || null,
+    recurring: recurringType, recurring_day: recurringDay || null,
+  }).select().single();
+  if (error || !first) return null;
+
+  // บันทึกวันที่เหลือ โดยอ้าง parent_id
+  for (let i = 1; i < dates.length; i++) {
+    await supabase.from('appointments').insert({
+      user_id: userId, title, meeting_date: dates[i],
+      start_time: `${time}:00`, location: location || null,
+      notes: notes || null, team_id: teamId || null,
+      recurring: recurringType, recurring_day: recurringDay || null,
+      recurring_parent_id: first.id,
+    });
+  }
+  return { count: dates.length, firstDate: dates[0] };
 }
 
 // ── Team Management ──
@@ -546,6 +598,68 @@ async function handleEvent(event) {
   }
 
   // ── Quick Actions ──
+  // ค้นหานัดหมาย
+  if (msg.startsWith('หา') || msg.startsWith('ค้นหา')) {
+    const keyword = msg.replace(/^หา|^ค้นหา/, '').trim();
+    if (!keyword) return reply(event, [flexText('🔍 พิมพ์คำค้นหาได้เลยครับ เช่น: หาประชุม, หาซูม, หานัดหมอ')]);
+    const { data: results } = await supabase.from('appointments').select('*')
+      .eq('user_id', userId).eq('archived', false)
+      .ilike('title', `%${keyword}%`)
+      .order('meeting_date').limit(10);
+    if (!results || results.length === 0) return reply(event, [flexText(`🔍 ไม่พบนัดหมาย "${keyword}" ครับ`)]);
+    const items = results.map(apt => ({
+      type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '8px', paddingAll: '10px', margin: 'xs',
+      contents: [
+        { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111111', wrap: true },
+        { type: 'text', text: `📅 ${apt.meeting_date} ⏰ ${apt.start_time.slice(0,5)}${apt.location ? ' 📍 '+apt.location : ''}`, size: 'xs', color: '#6b7280', margin: 'xs' },
+      ],
+    }));
+    return reply(event, [{ type: 'flex', altText: `ผลค้นหา "${keyword}"`,
+      contents: { type: 'bubble',
+        header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+          contents: [
+            { type: 'text', text: `🔍 ผลค้นหา "${keyword}"`, size: 'sm', weight: 'bold', color: '#06C755' },
+            { type: 'text', text: `พบ ${results.length} รายการ`, size: 'xs', color: '#64748b' },
+          ],
+        },
+        body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', contents: items },
+      },
+    }]);
+  }
+
+  // ตั้งนัดซ้ำ
+  if (msg.startsWith('ตั้งซ้ำ:')) {
+    const parts = msg.split(':'); const aptId = parts[1]; const recurType = parts[2] || 'weekly';
+    const { data: apt } = await supabase.from('appointments').select('*').eq('id', aptId).single();
+    if (!apt) return reply(event, [flexText('❌ ไม่พบนัดหมายครับ')]);
+    const dayNames = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+    const dow = new Date(apt.meeting_date + 'T00:00:00').getDay();
+    userState[userId] = { step: 'confirmRecurring', apt, recurType };
+    return reply(event, [flexText(`🔁 ตั้งนัดซ้ำ "${apt.title}"
+
+จะบันทึกทุกวัน${dayNames[dow]} เวลา ${apt.start_time.slice(0,5)} ล่วงหน้า 4 สัปดาห์ใช่ไหมครับ?`, [
+      { type: 'action', action: { type: 'message', label: '✅ ใช่ ตั้งซ้ำเลย', text: `ยืนยันซ้ำ:${aptId}:weekly:${dow}` } },
+      { type: 'action', action: { type: 'message', label: '🔁 ทุกวัน', text: `ยืนยันซ้ำ:${aptId}:daily:${dow}` } },
+      { type: 'action', action: { type: 'message', label: '📅 ทุกเดือน', text: `ยืนยันซ้ำ:${aptId}:monthly:${dow}` } },
+      { type: 'action', action: { type: 'message', label: '❌ ไม่เอา', text: 'ยกเลิก' } },
+    ])]);
+  }
+
+  if (msg.startsWith('ยืนยันซ้ำ:')) {
+    const parts = msg.split(':'); const aptId = parts[1]; const recurType = parts[2]; const dow = parseInt(parts[3]);
+    const { data: apt } = await supabase.from('appointments').select('*').eq('id', aptId).single();
+    if (!apt) return reply(event, [flexText('❌ ไม่พบนัดหมายครับ')]);
+    const result = await createRecurringAppointments(userId, { title: apt.title, time: apt.start_time.slice(0,5), location: apt.location, notes: apt.notes }, recurType, dow, apt.team_id);
+    const typeLabel = recurType === 'daily' ? 'ทุกวัน' : recurType === 'weekly' ? 'ทุกสัปดาห์' : 'ทุกเดือน';
+    if (!result) return reply(event, [flexText('❌ ตั้งนัดซ้ำไม่สำเร็จครับ')]);
+    return reply(event, [flexText(`✅ ตั้งนัดซ้ำแล้วครับ
+
+"${apt.title}" ${typeLabel}
+บันทึกล่วงหน้า ${result.count} ครั้งครับ`, [
+      { type: 'action', action: { type: 'message', label: '📆 ดูนัดทั้งหมด', text: 'นัดหมายทั้งหมด' } },
+    ])]);
+  }
+
   if (msg.startsWith('ลบ:')) { delete userState[userId]; return await deleteAppointment(event, userId, msg.replace('ลบ:', '')); }
   if (msg.startsWith('แก้ไข:')) {
     delete userState[userId];
@@ -1051,7 +1165,7 @@ function flexAllSchedule(apts) {
 }
 
 // ── FLEX: Save Confirm ──
-function flexSaveConfirm(title, date, time, headerText = '✅ บันทึกนัดหมายแล้วครับ', isPremium = false, notes = null) {
+function flexSaveConfirm(title, date, time, headerText = '✅ บันทึกนัดหมายแล้วครับ', isPremium = false, notes = null, showRecurring = false, aptId = null) {
   const d = new Date(date + 'T00:00:00');
   const dayNames = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
   const monthNames = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
@@ -1072,6 +1186,7 @@ function flexSaveConfirm(title, date, time, headerText = '✅ บันทึก
       footer: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
         contents: [
           ...(isPremium ? [{ type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: '📆 Add to Calendar', uri: calUrl } }] : []),
+          ...(showRecurring && aptId ? [{ type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '🔁 ตั้งซ้ำทุกสัปดาห์', text: `ตั้งซ้ำ:${aptId}:weekly` } }] : []),
           { type: 'button', style: 'primary', color: '#06C755', height: 'sm', action: { type: 'message', label: '📅 ดูกำหนดการ', text: 'กำหนดการ' } },
           { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
         ],
