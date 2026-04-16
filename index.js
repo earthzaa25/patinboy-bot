@@ -53,11 +53,18 @@ app.get('/api/calendar', async (req, res) => {
   if (!tokenData) return res.status(404).json({ error: 'invalid token' });
   const userId = tokenData.line_user_id;
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-  const y = now.getFullYear(); const m = now.getMonth();
+  // รองรับ month parameter เช่น 2026-04
+  let y = now.getFullYear(); let m = now.getMonth();
+  const monthParam = req.query.month;
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+    y = parseInt(monthParam.split('-')[0]);
+    m = parseInt(monthParam.split('-')[1]) - 1;
+  }
   const firstDay = new Date(y, m, 1).toISOString().slice(0,10);
-  const lastDay = new Date(y, m+2, 0).toISOString().slice(0,10);
+  const lastDay = new Date(y, m+1, 0).toISOString().slice(0,10);
   // ดึงนัดส่วนตัว
   const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).gte('meeting_date', firstDay).lte('meeting_date', lastDay).order('meeting_date').order('start_time');
+  // Calendar API ดึงทั้งหมดรวม archived ด้วย (เพื่อแสดงในปฏิทินรายเดือน)
   // ดึงนัดทีม
   const { data: ownTeams } = await supabase.from('teams').select('id').eq('owner_line_id', userId);
   const { data: memberships } = await supabase.from('team_members').select('team_id').eq('line_user_id', userId);
@@ -139,7 +146,7 @@ function canUseBusiness(plan) { return plan === 'business'; }
 // ── Appointments ──
 async function getTodayAppointments(userId) {
   const today = formatDate(new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })));
-  const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).eq('meeting_date', today).order('start_time', { ascending: true });
+  const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).eq('meeting_date', today).eq('archived', false).order('start_time', { ascending: true });
   // ดึงนัดทีม (เจ้าของทีม)
   const { data: ownTeams } = await supabase.from('teams').select('id').eq('owner_line_id', userId);
   const ownTeamIds = (ownTeams || []).map(t => t.id);
@@ -149,7 +156,7 @@ async function getTodayAppointments(userId) {
   const allTeamIds = [...new Set([...ownTeamIds, ...memberTeamIds])];
   let teamApts = [];
   if (allTeamIds.length > 0) {
-    const { data: ta } = await supabase.from('appointments').select('*').in('team_id', allTeamIds).eq('meeting_date', today).order('start_time', { ascending: true });
+    const { data: ta } = await supabase.from('appointments').select('*').in('team_id', allTeamIds).eq('meeting_date', today).eq('archived', false).order('start_time', { ascending: true });
     teamApts = (ta || []).filter(a => a.user_id !== userId);
   }
   const all = [...(personal || []), ...teamApts];
@@ -162,7 +169,7 @@ async function getAllAppointments(userId) {
   const todayStr = formatDate(now);
   const future = new Date(now); future.setDate(future.getDate() + 90);
   const futureStr = formatDate(future);
-  const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).gte('meeting_date', todayStr).lte('meeting_date', futureStr).order('meeting_date').order('start_time');
+  const { data: personal } = await supabase.from('appointments').select('*').eq('user_id', userId).eq('archived', false).gte('meeting_date', todayStr).lte('meeting_date', futureStr).order('meeting_date').order('start_time');
   // ดึงนัดทีม (เจ้าของทีม)
   const { data: ownTeams } = await supabase.from('teams').select('id').eq('owner_line_id', userId);
   const ownTeamIds = (ownTeams || []).map(t => t.id);
@@ -172,7 +179,7 @@ async function getAllAppointments(userId) {
   const allTeamIds = [...new Set([...ownTeamIds, ...memberTeamIds])];
   let teamApts = [];
   if (allTeamIds.length > 0) {
-    const { data: ta } = await supabase.from('appointments').select('*').in('team_id', allTeamIds).gte('meeting_date', todayStr).lte('meeting_date', futureStr).order('meeting_date').order('start_time');
+    const { data: ta } = await supabase.from('appointments').select('*').in('team_id', allTeamIds).eq('archived', false).gte('meeting_date', todayStr).lte('meeting_date', futureStr).order('meeting_date').order('start_time');
     teamApts = (ta || []).filter(a => a.user_id !== userId);
   }
   const all = [...(personal || []), ...teamApts];
@@ -408,12 +415,27 @@ async function checkReminders() {
         }
       }
     }
-    const { data: pastApts } = await supabase.from('appointments').select('id, title, meeting_date').lt('meeting_date', todayStr);
-    for (const apt of (pastApts || [])) { await supabase.from('appointments').delete().eq('id', apt.id); console.log(`🗑️ Auto-delete (past): ${apt.title}`); }
-    const { data: todayApts } = await supabase.from('appointments').select('id, title, start_time').eq('meeting_date', todayStr);
+    // Archive นัดวันเก่า (ไม่ลบ เก็บไว้ดูในปฏิทินรายเดือน)
+    const { data: pastApts } = await supabase.from('appointments').select('id, title').lt('meeting_date', todayStr).eq('archived', false);
+    for (const apt of (pastApts || [])) {
+      await supabase.from('appointments').update({ archived: true }).eq('id', apt.id);
+      console.log(`📦 Archived: ${apt.title}`);
+    }
+    // Archive นัดวันนี้ที่เกิน 1 ชั่วโมง
+    const { data: todayApts } = await supabase.from('appointments').select('id, title, start_time').eq('meeting_date', todayStr).eq('archived', false);
     for (const apt of (todayApts || [])) {
       const [h, m] = apt.start_time.slice(0,5).split(':').map(Number);
-      if (currentMins >= h * 60 + m + 60) { await supabase.from('appointments').delete().eq('id', apt.id); console.log(`🗑️ Auto-delete (today): ${apt.title}`); }
+      if (currentMins >= h * 60 + m + 60) {
+        await supabase.from('appointments').update({ archived: true }).eq('id', apt.id);
+        console.log(`📦 Archived today: ${apt.title}`);
+      }
+    }
+    // ลบนัดที่ archive เกิน 1 ปี
+    const oneYearAgo = new Date(now); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const { data: oldApts } = await supabase.from('appointments').select('id, title').lt('meeting_date', formatDate(oneYearAgo)).eq('archived', true);
+    for (const apt of (oldApts || [])) {
+      await supabase.from('appointments').delete().eq('id', apt.id);
+      console.log(`🗑️ Deleted 1yr+: ${apt.title}`);
     }
   } catch(e) { console.error('checkReminders error:', e); }
 }
