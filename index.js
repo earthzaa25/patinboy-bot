@@ -843,6 +843,7 @@ async function handleEvent(event) {
     const isPersonal = planType === 'personal';
     return reply(event, [{ type: 'flex', altText: `เลือกระยะเวลา ${isPersonal ? 'Personal' : 'Business'}`,
       contents: { type: 'bubble',
+        styles: { header: { backgroundColor: '#0f172a' } },
         header: { type: 'box', layout: 'vertical', paddingAll: '16px',
           contents: [
             { type: 'text', text: isPersonal ? '💙 Personal Plan' : '💜 Business Plan', size: 'sm', weight: 'bold', color: isPersonal ? '#3b82f6' : '#8b5cf6' },
@@ -888,8 +889,8 @@ async function handleEvent(event) {
     userState[userId] = { step: 'waitingSlip', planType, period, price };
     return reply(event, [{ type: 'flex', altText: `ชำระเงิน ${planLabel} ${periodLabel} ฿${price}`,
       contents: { type: 'bubble',
+        styles: { header: { backgroundColor: '#0f172a' } },
         header: { type: 'box', layout: 'vertical', paddingAll: '16px',
-          styles: { backgroundColor: '#0f172a' },
           contents: [
             { type: 'text', text: '💳 ชำระเงิน', size: 'xs', color: '#94a3b8' },
             { type: 'text', text: `${planLabel} — ${periodLabel}`, size: 'lg', weight: 'bold', color: '#ffffff', margin: 'xs' },
@@ -1585,6 +1586,8 @@ async function setupRichMenu() {
     if (!createRes.ok) { console.error('❌ สร้าง Rich Menu ไม่สำเร็จ:', JSON.stringify(createData)); return; }
     const richMenuId = createData.richMenuId;
     console.log('✅ สร้าง Rich Menu ID:', richMenuId);
+    // รอ 2 วินาทีให้ LINE sync Rich Menu ก่อน upload
+    await new Promise(r => setTimeout(r, 2000));
 
     const imageBuffer = fs.readFileSync(imgPath);
     // ตรวจสอบ PNG signature (89 50 4E 47)
