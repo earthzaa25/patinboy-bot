@@ -599,9 +599,16 @@ async function handleEvent(event) {
 
   // ── Quick Actions ──
   // ค้นหานัดหมาย
+  if (msg === 'ค้นหา' || msg === 'ค้นหานัดหมาย') {
+    userState[userId] = { step: 'searching' };
+    return reply(event, [flexText('🔍 พิมพ์คำที่ต้องการค้นหาได้เลยครับ เช่น ประชุม, หมอ, Zoom')]);
+  }
   if (msg.startsWith('หา') || msg.startsWith('ค้นหา')) {
     const keyword = msg.replace(/^หา|^ค้นหา/, '').trim();
-    if (!keyword) return reply(event, [flexText('🔍 พิมพ์คำค้นหาได้เลยครับ เช่น: หาประชุม, หาซูม, หานัดหมอ')]);
+    if (!keyword) {
+      userState[userId] = { step: 'searching' };
+      return reply(event, [flexText('🔍 พิมพ์คำที่ต้องการค้นหาได้เลยครับ เช่น ประชุม, หมอ, Zoom')]);
+    }
     const { data: results } = await supabase.from('appointments').select('*')
       .eq('user_id', userId).eq('archived', false)
       .ilike('title', `%${keyword}%`)
@@ -623,6 +630,44 @@ async function handleEvent(event) {
           ],
         },
         body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', contents: items },
+      },
+    }]);
+  }
+
+  // รับคำค้นหาจาก state
+  if (userState[userId]?.step === 'searching') {
+    delete userState[userId];
+    const keyword = msg.trim();
+    if (!keyword) return reply(event, [flexText('🔍 กรุณาพิมพ์คำค้นหาครับ')]);
+    const { data: results } = await supabase.from('appointments').select('*')
+      .eq('user_id', userId).eq('archived', false)
+      .ilike('title', `%${keyword}%`)
+      .order('meeting_date').limit(10);
+    if (!results || results.length === 0) return reply(event, [flexText(`🔍 ไม่พบนัดหมายที่มีคำว่า "${keyword}" ครับ
+
+ลองค้นหาคำอื่นดูนะครับ`, [
+      { type: 'action', action: { type: 'message', label: '📅 ดูนัดทั้งหมด', text: 'นัดหมายทั้งหมด' } },
+    ])]);
+    const items = results.map(apt => ({
+      type: 'box', layout: 'vertical', backgroundColor: '#f9fafb', cornerRadius: '8px', paddingAll: '10px', margin: 'xs',
+      action: { type: 'message', text: `จัดการนัด` },
+      contents: [
+        { type: 'text', text: apt.title, size: 'sm', weight: 'bold', color: '#111827', wrap: true },
+        { type: 'text', text: `📅 ${apt.meeting_date} ⏰ ${apt.start_time?.slice(0,5) || '--:--'}${apt.location ? ' 📍'+apt.location : ''}`, size: 'xs', color: '#6b7280', margin: 'xs' },
+      ],
+    }));
+    return reply(event, [{ type: 'flex', altText: `ผลค้นหา "${keyword}"`,
+      contents: { type: 'bubble',
+        header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+          contents: [
+            { type: 'text', text: `🔍 ผลค้นหา "${keyword}"`, size: 'sm', weight: 'bold', color: '#06C755' },
+            { type: 'text', text: `พบ ${results.length} รายการ`, size: 'xs', color: '#64748b' },
+          ],
+        },
+        body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', contents: items },
+        footer: { type: 'box', layout: 'vertical', paddingAll: '10px',
+          contents: [{ type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '🔍 ค้นหาใหม่', text: 'ค้นหา' } }]
+        }
       },
     }]);
   }
@@ -721,6 +766,18 @@ async function handleEvent(event) {
 
   // ── Menu Commands ──
   // ตั้งเวลาสรุปงานเช้า
+  // AI สรุปงาน — รับหลายคำสั่ง
+  if (msg === 'สรุปงานวันนี้' || msg === 'AI สรุปงาน' || msg === 'สรุปงาน' || msg === 'ขอสรุป') {
+    const plan = await getUserPlan(userId);
+    if (!canUsePremium(plan)) return reply(event, [flexText('🔒 AI สรุปงานสำหรับ Personal Plan ขึ้นไปครับ กรุณาพิมพ์ "แพลน" เพื่อดูรายละเอียด')]);
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const todayStr = formatDate(now);
+    const { data: apts } = await supabase.from('appointments').select('*').eq('user_id', userId).eq('meeting_date', todayStr).eq('archived', false).order('start_time');
+    const summary = await generateDailySummary(apts || [], now);
+    if (summary) return reply(event, [flexDailyBriefing(summary, apts || [], todayStr)]);
+    return reply(event, [flexText('❌ ไม่สามารถสรุปงานได้ตอนนี้ครับ')]);
+  }
+
   if (msg.startsWith('ตั้งเวลาสรุป')) {
     const plan = await getUserPlan(userId);
     if (!canUsePremium(plan)) return reply(event, [flexText('🔒 ฟีเจอร์นี้สำหรับ Personal Plan ขึ้นไปครับ')]);
@@ -845,6 +902,23 @@ async function handleEvent(event) {
   }
 
   // ถามยืนยันถ้าข้อมูลดูผิดปกติ
+  // ถ้า state กำลังรอเวลา ให้นำเวลามารวมกับข้อมูลเดิม
+  if (userState[userId]?.step === 'waitingTime') {
+    const prev = userState[userId];
+    const timeParsed = await parseAppointmentWithClaude(`${prev.parsed.title} ${prev.date} ${msg}`, userId);
+    if (timeParsed && timeParsed.time) {
+      delete userState[userId];
+      const merged = { ...prev.parsed, time: timeParsed.time };
+      return await saveAndReply(event, userId, merged);
+    }
+    return reply(event, [flexText(`⏰ ยังไม่เข้าใจเวลาครับ กรุณาพิมพ์เช่น 13:30 หรือ บ่ายโมงครึ่ง`, [
+      { type: 'action', action: { type: 'message', label: '08:00', text: '08:00' } },
+      { type: 'action', action: { type: 'message', label: '09:00', text: '09:00' } },
+      { type: 'action', action: { type: 'message', label: '13:00', text: '13:00' } },
+      { type: 'action', action: { type: 'message', label: '15:00', text: '15:00' } },
+    ])]);
+  }
+
   if (parsed.needsConfirm && parsed.confirmMsg) {
     userState[userId] = { step: 'confirmingDate', parsed };
     return reply(event, [flexText(`⚠️ ขอยืนยันก่อนนะครับ\n\n${parsed.confirmMsg}`, [
@@ -857,7 +931,17 @@ async function handleEvent(event) {
     { type: 'action', action: { type: 'message', label: 'วันนี้', text: `${parsed.title} วันนี้ ${parsed.time || ''}`.trim() } },
     { type: 'action', action: { type: 'message', label: 'พรุ่งนี้', text: `${parsed.title} พรุ่งนี้ ${parsed.time || ''}`.trim() } },
   ])]);
-  if (!parsed.time) return reply(event, [flexText(`⏰ "${parsed.title}" — กี่โมงครับ?\n\nเช่น: 14:00 / บ่ายสอง / 1400`)]);
+  if (!parsed.time) {
+    userState[userId] = { step: 'waitingTime', date: parsed.date, parsed };
+    return reply(event, [flexText(`📅 "${parsed.title}" วันที่ ${parsed.date}
+
+⏰ กี่โมงครับ? เช่น 09:00 / บ่ายโมง / 1330`, [
+      { type: 'action', action: { type: 'message', label: '08:00 เช้า', text: '08:00' } },
+      { type: 'action', action: { type: 'message', label: '09:00 เช้า', text: '09:00' } },
+      { type: 'action', action: { type: 'message', label: '13:00 บ่าย', text: '13:00' } },
+      { type: 'action', action: { type: 'message', label: '15:00 บ่าย', text: '15:00' } },
+    ])]);
+  }
 
   // ถามว่าบันทึกส่วนตัวหรือทีม
   const { data: ownTeams } = await supabase.from('teams').select('id, name').eq('owner_line_id', userId);
