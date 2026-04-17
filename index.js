@@ -843,7 +843,7 @@ async function handleEvent(event) {
     const isPersonal = planType === 'personal';
     return reply(event, [{ type: 'flex', altText: `เลือกระยะเวลา ${isPersonal ? 'Personal' : 'Business'}`,
       contents: { type: 'bubble',
-        header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        header: { type: 'box', layout: 'vertical', paddingAll: '16px',
           contents: [
             { type: 'text', text: isPersonal ? '💙 Personal Plan' : '💜 Business Plan', size: 'sm', weight: 'bold', color: isPersonal ? '#3b82f6' : '#8b5cf6' },
             { type: 'text', text: 'เลือกระยะเวลาสมัครครับ', size: 'xs', color: '#94a3b8', margin: 'xs' },
@@ -888,10 +888,11 @@ async function handleEvent(event) {
     userState[userId] = { step: 'waitingSlip', planType, period, price };
     return reply(event, [{ type: 'flex', altText: `ชำระเงิน ${planLabel} ${periodLabel} ฿${price}`,
       contents: { type: 'bubble',
-        header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+        header: { type: 'box', layout: 'vertical', paddingAll: '16px',
+          styles: { backgroundColor: '#0f172a' },
           contents: [
             { type: 'text', text: '💳 ชำระเงิน', size: 'xs', color: '#94a3b8' },
-            { type: 'text', text: `${planLabel} — ${periodLabel}`, size: 'lg', weight: 'bold', color: '#fff', margin: 'xs' },
+            { type: 'text', text: `${planLabel} — ${periodLabel}`, size: 'lg', weight: 'bold', color: '#ffffff', margin: 'xs' },
             { type: 'text', text: `฿${price.toLocaleString()}`, size: 'xxl', weight: 'bold', color: '#06C755', margin: 'xs' },
           ],
         },
