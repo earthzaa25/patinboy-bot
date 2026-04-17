@@ -1368,13 +1368,18 @@ async function setupRichMenu() {
       headers: {
         'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
         'Content-Type': 'image/png',
-        'Content-Length': imageBuffer.length.toString(),
       },
       body: imageBuffer,
     });
-    const uploadText = await uploadRes.text();
-    console.log('📤 Upload status:', uploadRes.status, uploadText.slice(0,100));
-    if (!uploadRes.ok) { console.error('❌ อัปโหลดรูปไม่สำเร็จ'); return; }
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      console.error('❌ อัปโหลดรูปไม่สำเร็จ status:', uploadRes.status, errText.slice(0,80));
+      // ลบ rich menu ที่สร้างไว้แล้วแต่ upload ไม่สำเร็จ
+      await fetch(`https://api.line.me/v2/bot/richmenu/${richMenuId}`, {
+        method: 'DELETE', headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+      });
+      return;
+    }
     console.log('✅ อัปโหลดรูปสำเร็จ');
 
     await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`, {
