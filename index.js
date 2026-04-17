@@ -541,6 +541,46 @@ async function handleEvent(event) {
   if (event.type !== 'message') return;
 
   if (event.message.type === 'image') {
+    // เช็ค state waitingSlip ก่อน — ถ้ารอสลิปอยู่ให้ตรวจสลิปแทน
+    if (userState[userId]?.step === 'waitingSlip') {
+      const state = userState[userId];
+      delete userState[userId];
+      try {
+        const imageBase64 = await getImageBase64(event.message.id);
+        const checkRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6', max_tokens: 300,
+            messages: [{ role: 'user', content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
+              { type: 'text', text: `นี่เป็นสลิปโอนเงินไหม? ถ้าใช่ตอบ VALID แล้วบอกจำนวนเงินที่โอน ถ้าไม่ใช่ตอบ INVALID เท่านั้น ราคาที่ต้องจ่าย ฿${state.price}` }
+            ]}],
+          })
+        });
+        const checkData = await checkRes.json();
+        const result = checkData.content?.[0]?.text || '';
+        if (result.includes('VALID') && !result.includes('INVALID')) {
+          const months = state.period === '1y' ? 12 : 1;
+          const expiresAt = new Date(Date.now() + months * 30 * 24 * 60 * 60 * 1000).toISOString();
+          await supabase.from('users').update({ plan: state.planType, plan_expires_at: expiresAt }).eq('line_user_id', userId);
+          const planLabel = state.planType === 'personal' ? 'Personal' : 'Business';
+          const periodLabel = state.period === '1y' ? '1 ปี' : '1 เดือน';
+          return reply(event, [flexText(`🎉 อัปเกรดสำเร็จแล้วครับ!\n\n✅ ${planLabel} Plan — ${periodLabel}\n💰 ฿${state.price.toLocaleString()}\n\nขอบคุณที่สนับสนุนครับ 🙏 ใช้งานได้เลยครับ!`, [
+            { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
+            { type: 'action', action: { type: 'message', label: '💳 ดูแพลน', text: 'แพลน' } },
+          ])]);
+        } else {
+          return reply(event, [flexText('❌ ไม่พบข้อมูลการโอนเงินในรูปครับ\n\nกรุณาส่งสลิปการโอนเงินจริงๆ ครับ', [
+            { type: 'action', action: { type: 'message', label: '💳 ลองใหม่', text: 'แพลน' } },
+          ])]);
+        }
+      } catch(e) {
+        console.error('slip check error:', e.message);
+        return reply(event, [flexText('⚠️ ไม่สามารถตรวจสลิปได้ตอนนี้ครับ\n\nทีมงานจะตรวจสอบและอัปเกรดให้ภายใน 30 นาทีครับ 🙏')]);
+      }
+    }
+    // ถ้าไม่ได้รอสลิป → ตรวจรูปเพื่อนัดหมายตามปกติ
     const plan = await getUserPlan(userId);
     if (!canUsePremium(plan)) return reply(event, [flexText('🔒 การส่งรูปเพื่อนัดหมายสำหรับ Personal Plan ขึ้นไปครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียด')]);
     try { const imageBase64 = await getImageBase64(event.message.id); return await handleImageAppointment(event, userId, imageBase64); }
@@ -920,8 +960,7 @@ async function handleEvent(event) {
     }]);
   }
 
-  // รับสลิป (ปิดไว้ก่อน)
-  // if (userState[userId]?.step === 'waitingSlip' && event.message?.type === 'image') { ... }
+
 
   if (msg === 'อัปเกรด Personal' || msg === 'อัปเกรด Business') {
     const planType = msg.includes('Personal') ? 'personal' : 'business';
