@@ -1354,12 +1354,22 @@ async function setupRichMenu() {
     console.log('✅ สร้าง Rich Menu ID:', richMenuId);
 
     const imageBuffer = fs.readFileSync(imgPath);
+    // ตรวจสอบ PNG signature (89 50 4E 47)
+    const isPNG = imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x4E && imageBuffer[3] === 0x47;
+    console.log('🖼️ ขนาดไฟล์:', imageBuffer.length, 'bytes | PNG valid:', isPNG);
+    if (!isPNG) { console.error('❌ ไฟล์ไม่ใช่ PNG จริงๆ ครับ'); return; }
     const uploadRes = await fetch(`https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'image/png' },
+      headers: {
+        'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
+        'Content-Type': 'image/png',
+        'Content-Length': imageBuffer.length.toString(),
+      },
       body: imageBuffer,
     });
-    if (!uploadRes.ok) { console.error('❌ อัปโหลดรูปไม่สำเร็จ:', await uploadRes.text()); return; }
+    const uploadText = await uploadRes.text();
+    console.log('📤 Upload status:', uploadRes.status, uploadText.slice(0,100));
+    if (!uploadRes.ok) { console.error('❌ อัปโหลดรูปไม่สำเร็จ'); return; }
     console.log('✅ อัปโหลดรูปสำเร็จ');
 
     await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`, {
