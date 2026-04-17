@@ -837,15 +837,6 @@ async function handleEvent(event) {
     }]);
   }
 
-  if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
-  if (msg === 'เมนู') return reply(event, [await flexMenu(userId)]);
-  if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
-  if (msg === 'กำหนดการ' || msg === 'ดูนัดหมาย') return reply(event, [flexSchedule(await getTodayAppointments(userId))]);
-  if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
-  if (msg === 'จัดการนัด') return reply(event, [flexManageMenu()]);
-  if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
-  if (msg === 'ทีม' || msg === 'จัดการทีม') return await handleTeam(event, userId);
-  if (msg === 'แพลน' || msg === 'plan') { const user = await getOrCreateUser(userId); return reply(event, [flexPlan(user?.plan || 'free', user?.plan_expires_at)]); }
   // เลือก Plan แล้วให้เลือกระยะเวลา
   if (msg.startsWith('เลือกแพลน:')) {
     const planType = msg.split(':')[1];
@@ -970,6 +961,17 @@ async function handleEvent(event) {
     const planType = msg.includes('Personal') ? 'personal' : 'business';
     return reply(event, [flexText(`กรุณาพิมพ์ "แพลน" เพื่อเลือก Plan ครับ`)]);
   }
+
+  if (msg === 'สวัสดี' || msg === 'หวัดดี') return reply(event, [flexWelcome()]);
+  if (msg === 'เมนู') return reply(event, [await flexMenu(userId)]);
+  if (msg === 'เพิ่มนัด') return reply(event, [flexAddAppointment()]);
+  if (msg === 'กำหนดการ' || msg === 'ดูนัดหมาย') return reply(event, [flexSchedule(await getTodayAppointments(userId))]);
+  if (msg === 'นัดหมายทั้งหมด' || msg === 'นัดทั้งหมด') return reply(event, [flexAllSchedule(await getAllAppointments(userId))]);
+  if (msg === 'จัดการนัด') return reply(event, [flexManageMenu()]);
+  if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
+  if (msg === 'ทีม' || msg === 'จัดการทีม') return await handleTeam(event, userId);
+  if (msg === 'แพลน' || msg === 'plan') { const user = await getOrCreateUser(userId); return reply(event, [flexPlan(user?.plan || 'free', user?.plan_expires_at)]); }
+
   if (msg === 'สร้างทีม') {
     const plan = await getUserPlan(userId);
     if (!canUseBusiness(plan)) return reply(event, [flexText('🔒 สำหรับ Business Plan เท่านั้นครับ\n\nพิมพ์ "แพลน" เพื่อดูรายละเอียด')]);
