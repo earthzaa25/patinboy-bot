@@ -846,9 +846,129 @@ async function handleEvent(event) {
   if (msg === 'ติดต่อเรา') return reply(event, [flexContact()]);
   if (msg === 'ทีม' || msg === 'จัดการทีม') return await handleTeam(event, userId);
   if (msg === 'แพลน' || msg === 'plan') { const user = await getOrCreateUser(userId); return reply(event, [flexPlan(user?.plan || 'free', user?.plan_expires_at)]); }
+  // เลือก Plan แล้วให้เลือกระยะเวลา
+  if (msg.startsWith('เลือกแพลน:')) {
+    const planType = msg.split(':')[1];
+    const isPersonal = planType === 'personal';
+    return reply(event, [{ type: 'flex', altText: `เลือกระยะเวลา ${isPersonal ? 'Personal' : 'Business'}`,
+      contents: { type: 'bubble',
+        header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+          contents: [
+            { type: 'text', text: isPersonal ? '💙 Personal Plan' : '💜 Business Plan', size: 'sm', weight: 'bold', color: isPersonal ? '#3b82f6' : '#8b5cf6' },
+            { type: 'text', text: 'เลือกระยะเวลาสมัครครับ', size: 'xs', color: '#94a3b8', margin: 'xs' },
+          ],
+        },
+        body: { type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'md',
+          contents: [
+            { type: 'box', layout: 'horizontal', backgroundColor: '#f8fafc', cornerRadius: '12px', paddingAll: '14px',
+              action: { type: 'message', text: `ชำระ:${planType}:1m` },
+              contents: [
+                { type: 'box', layout: 'vertical', flex: 1, contents: [
+                  { type: 'text', text: '1 เดือน', size: 'md', weight: 'bold', color: '#0f172a' },
+                  { type: 'text', text: 'รายเดือน', size: 'xs', color: '#94a3b8', margin: 'xs' },
+                ]},
+                { type: 'text', text: isPersonal ? '฿30' : '฿199', size: 'xl', weight: 'bold', color: isPersonal ? '#3b82f6' : '#8b5cf6', align: 'end' },
+              ],
+            },
+            { type: 'box', layout: 'horizontal', backgroundColor: '#f0fdf4', cornerRadius: '12px', paddingAll: '14px',
+              action: { type: 'message', text: `ชำระ:${planType}:1y` },
+              contents: [
+                { type: 'box', layout: 'vertical', flex: 1, contents: [
+                  { type: 'text', text: '1 ปี', size: 'md', weight: 'bold', color: '#0f172a' },
+                  { type: 'box', layout: 'horizontal', margin: 'xs', contents: [
+                    { type: 'text', text: 'ประหยัด 2 เดือน!', size: 'xs', color: '#fff', backgroundColor: '#06C755', cornerRadius: '6px', paddingAll: '3px', flex: 0 },
+                  ]},
+                ]},
+                { type: 'text', text: isPersonal ? '฿300' : '฿1,990', size: 'xl', weight: 'bold', color: '#06C755', align: 'end' },
+              ],
+            },
+          ],
+        },
+      },
+    }]);
+  }
+
+  // แสดง QR PromptPay และข้อมูลชำระเงิน
+  if (msg.startsWith('ชำระ:')) {
+    const parts = msg.split(':'); const planType = parts[1]; const period = parts[2];
+    const isPersonal = planType === 'personal'; const isYearly = period === '1y';
+    const price = isPersonal ? (isYearly ? 300 : 30) : (isYearly ? 1990 : 199);
+    const planLabel = isPersonal ? 'Personal' : 'Business';
+    const periodLabel = isYearly ? '1 ปี' : '1 เดือน';
+    // เก็บ state รอสลิป
+    userState[userId] = { step: 'waitingSlip', planType, period, price };
+    return reply(event, [{ type: 'flex', altText: `ชำระเงิน ${planLabel} ${periodLabel} ฿${price}`,
+      contents: { type: 'bubble',
+        header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
+          contents: [
+            { type: 'text', text: '💳 ชำระเงิน', size: 'xs', color: '#94a3b8' },
+            { type: 'text', text: `${planLabel} — ${periodLabel}`, size: 'lg', weight: 'bold', color: '#fff', margin: 'xs' },
+            { type: 'text', text: `฿${price.toLocaleString()}`, size: 'xxl', weight: 'bold', color: '#06C755', margin: 'xs' },
+          ],
+        },
+        body: { type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+          contents: [
+            { type: 'text', text: 'โอนเงินมาที่ครับ', size: 'sm', color: '#64748b' },
+            { type: 'separator', margin: 'sm' },
+            { type: 'box', layout: 'horizontal', margin: 'sm', contents: [{ type: 'text', text: 'ธนาคาร', size: 'sm', color: '#94a3b8', flex: 1 }, { type: 'text', text: 'กสิกรไทย (KBank)', size: 'sm', color: '#0f172a', flex: 2, align: 'end' }] },
+            { type: 'box', layout: 'horizontal', contents: [{ type: 'text', text: 'เลขบัญชี', size: 'sm', color: '#94a3b8', flex: 1 }, { type: 'text', text: '173-1-98635-1', size: 'sm', color: '#0f172a', flex: 2, align: 'end', weight: 'bold' }] },
+            { type: 'box', layout: 'horizontal', contents: [{ type: 'text', text: 'ชื่อบัญชี', size: 'sm', color: '#94a3b8', flex: 1 }, { type: 'text', text: 'นาย ปริยวิศว์ ทองใบอ่อน', size: 'xs', color: '#0f172a', flex: 2, align: 'end', wrap: true }] },
+            { type: 'box', layout: 'horizontal', contents: [{ type: 'text', text: 'PromptPay', size: 'sm', color: '#94a3b8', flex: 1 }, { type: 'text', text: '0864999198', size: 'sm', color: '#06C755', flex: 2, align: 'end', weight: 'bold' }] },
+            { type: 'separator', margin: 'md' },
+            { type: 'text', text: '📸 โอนแล้วส่งสลิปมาที่นี่เลยครับ จะอัปเกรดให้ทันที!', size: 'xs', color: '#374151', wrap: true, margin: 'sm' },
+          ],
+        },
+      },
+    }]);
+  }
+
+  // รับสลิป — ตรวจสอบด้วย AI
+  if (userState[userId]?.step === 'waitingSlip' && event.message?.type === 'image') {
+    const state = userState[userId];
+    delete userState[userId];
+    try {
+      const imgBuffer = await client.getMessageContent(event.message.id);
+      const chunks = []; for await (const chunk of imgBuffer) chunks.push(chunk);
+      const base64 = Buffer.concat(chunks).toString('base64');
+      // ตรวจสลิปด้วย Claude
+      const checkRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6', max_tokens: 200,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+            { type: 'text', text: `นี่เป็นสลิปโอนเงินไหม? ถ้าใช่ให้ตอบว่า VALID และบอกจำนวนเงินที่โอน ถ้าไม่ใช่ตอบว่า INVALID เท่านั้น ราคาที่ต้องจ่ายคือ ฿${state.price}` }
+          ]}],
+        })
+      });
+      const checkData = await checkRes.json();
+      const result = checkData.content?.[0]?.text || '';
+      if (result.includes('VALID') && !result.includes('INVALID')) {
+        // อัปเกรด Plan
+        const months = state.period === '1y' ? 12 : 1;
+        const expiresAt = new Date(Date.now() + months * 30 * 24 * 60 * 60 * 1000).toISOString();
+        await supabase.from('users').update({ plan: state.planType, plan_expires_at: expiresAt }).eq('line_user_id', userId);
+        const planLabel = state.planType === 'personal' ? 'Personal' : 'Business';
+        const periodLabel = state.period === '1y' ? '1 ปี' : '1 เดือน';
+        return reply(event, [flexText(`🎉 อัปเกรดสำเร็จแล้วครับ!\n\n✅ ${planLabel} Plan — ${periodLabel}\n💰 ฿${state.price}\n\nขอบคุณที่สนับสนุนครับ 🙏\nใช้งานได้เลยครับ!`, [
+          { type: 'action', action: { type: 'message', label: '📅 กำหนดการ', text: 'กำหนดการ' } },
+          { type: 'action', action: { type: 'message', label: '💳 ดูแพลน', text: 'แพลน' } },
+        ])]);
+      } else {
+        return reply(event, [flexText('❌ ไม่พบข้อมูลการโอนเงินในรูปครับ\n\nกรุณาส่งสลิปการโอนเงินจริงๆ หรือติดต่อทีมงานครับ', [
+          { type: 'action', action: { type: 'message', label: '💳 ลองใหม่', text: 'แพลน' } },
+        ])]);
+      }
+    } catch(e) {
+      console.error('slip check error:', e.message);
+      return reply(event, [flexText('⚠️ ไม่สามารถตรวจสลิปได้ตอนนี้ครับ\n\nทีมงานจะตรวจสอบและอัปเกรดให้ภายใน 30 นาทีครับ 🙏')]);
+    }
+  }
+
   if (msg === 'อัปเกรด Personal' || msg === 'อัปเกรด Business') {
-    const planName = msg.includes('Personal') ? 'Personal ฿30/เดือน' : 'Business ฿199/เดือน';
-    return reply(event, [flexText(`💳 อัปเกรด ${planName}\n\nโอนเงินมาที่:\nธนาคาร: [ชื่อธนาคาร]\nเลขบัญชี: [เลขบัญชี]\nชื่อ: [ชื่อบัญชี]\n\nแล้วส่งสลิปมาที่นี่เลยครับ ทีมงานจะอัปเกรดให้ภายใน 30 นาที 😊`)]);
+    const planType = msg.includes('Personal') ? 'personal' : 'business';
+    return reply(event, [flexText(`กรุณาพิมพ์ "แพลน" เพื่อเลือก Plan ครับ`)]);
   }
   if (msg === 'สร้างทีม') {
     const plan = await getUserPlan(userId);
@@ -1298,18 +1418,41 @@ function flexPlan(plan, expiresAt) {
   const info = planInfo[plan] || planInfo.free;
   const exp = expiresAt ? `หมดอายุ: ${new Date(expiresAt).toLocaleDateString('th-TH')}` : '';
   const isExp = expiresAt && new Date(expiresAt) < new Date();
+  const btns = [];
+  if (plan !== 'personal' && plan !== 'business') {
+    btns.push({ type: 'button', style: 'primary', color: '#3b82f6', height: 'sm', action: { type: 'message', label: '⬆️ Personal ฿30/เดือน', text: 'เลือกแพลน:personal' } });
+  }
+  if (plan !== 'business') {
+    btns.push({ type: 'button', style: 'primary', color: '#8b5cf6', height: 'sm', action: { type: 'message', label: '⬆️ Business ฿199/เดือน', text: 'เลือกแพลน:business' } });
+  }
+  btns.push({ type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } });
   return { type: 'flex', altText: `แพลนของฉัน: ${info.label}`,
     contents: { type: 'bubble',
       header: { type: 'box', layout: 'vertical', backgroundColor: '#0f172a', paddingAll: '16px',
-        contents: [{ type: 'text', text: '💳 แพลนของฉัน', size: 'xs', color: '#94a3b8' }, { type: 'text', text: info.label, size: 'xxl', weight: 'bold', color: info.color, margin: 'xs' }, { type: 'text', text: info.price, size: 'sm', color: '#64748b' }, ...(exp ? [{ type: 'text', text: isExp ? `⚠️ ${exp} (หมดแล้ว)` : exp, size: 'xs', color: isExp ? '#ef4444' : '#64748b', margin: 'xs' }] : [])],
-      },
-      footer: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
         contents: [
-          ...(plan !== 'personal' && plan !== 'business' ? [{ type: 'button', style: 'primary', color: '#3b82f6', height: 'sm', action: { type: 'message', label: '⬆️ อัปเกรด Personal ฿30', text: 'อัปเกรด Personal' } }] : []),
-          ...(plan !== 'business' ? [{ type: 'button', style: 'primary', color: '#8b5cf6', height: 'sm', action: { type: 'message', label: '⬆️ อัปเกรด Business ฿199', text: 'อัปเกรด Business' } }] : []),
-          { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '📋 เมนู', text: 'เมนู' } },
+          { type: 'text', text: '💳 แพลนของฉัน', size: 'xs', color: '#94a3b8' },
+          { type: 'text', text: info.label, size: 'xxl', weight: 'bold', color: info.color, margin: 'xs' },
+          { type: 'text', text: info.price, size: 'sm', color: '#64748b' },
+          ...(exp ? [{ type: 'text', text: isExp ? `⚠️ ${exp} (หมดแล้ว)` : `✅ ${exp}`, size: 'xs', color: isExp ? '#ef4444' : '#06C755', margin: 'xs' }] : []),
         ],
       },
+      body: { type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'sm',
+        contents: [
+          { type: 'text', text: plan === 'free' ? 'อัปเกรดเพื่อปลดล็อคฟีเจอร์ทั้งหมดครับ 🚀' : 'ต่ออายุหรืออัปเกรด Plan ได้เลยครับ', size: 'sm', color: '#64748b', wrap: true },
+          { type: 'separator', margin: 'sm' },
+          { type: 'box', layout: 'horizontal', margin: 'sm', contents: [
+            { type: 'text', text: 'Personal', size: 'sm', color: '#3b82f6', weight: 'bold', flex: 2 },
+            { type: 'text', text: '฿30/เดือน', size: 'sm', color: '#374151', flex: 2, align: 'end' },
+            { type: 'text', text: '฿300/ปี', size: 'sm', color: '#06C755', flex: 2, align: 'end' },
+          ]},
+          { type: 'box', layout: 'horizontal', contents: [
+            { type: 'text', text: 'Business', size: 'sm', color: '#8b5cf6', weight: 'bold', flex: 2 },
+            { type: 'text', text: '฿199/เดือน', size: 'sm', color: '#374151', flex: 2, align: 'end' },
+            { type: 'text', text: '฿1,990/ปี', size: 'sm', color: '#06C755', flex: 2, align: 'end' },
+          ]},
+        ],
+      },
+      footer: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm', contents: btns },
     },
   };
 }
