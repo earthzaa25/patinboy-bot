@@ -1314,14 +1314,19 @@ async function setupRichMenu() {
     if (!imgPath) { console.log('⚠️ ไม่พบไฟล์ rich_menu.png'); return; }
     console.log('✅ พบไฟล์:', path.basename(imgPath));
 
-    // เช็คว่ามี Rich Menu อยู่แล้วไหม
+    // ลบ Rich Menu เก่าทิ้งก่อน
     const listRes = await fetch('https://api.line.me/v2/bot/richmenu/list', {
       headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
     });
     const listData = await listRes.json();
     if (listData.richmenus && listData.richmenus.length > 0) {
-      console.log('📋 Rich Menu มีอยู่แล้ว ID:', listData.richmenus[0].richMenuId);
-      return;
+      for (const rm of listData.richmenus) {
+        await fetch(`https://api.line.me/v2/bot/richmenu/${rm.richMenuId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+        });
+        console.log('🗑️ ลบ Rich Menu เก่า:', rm.richMenuId);
+      }
     }
 
     console.log('🚀 กำลังสร้าง Rich Menu...');
