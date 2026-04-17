@@ -866,9 +866,7 @@ async function handleEvent(event) {
               contents: [
                 { type: 'box', layout: 'vertical', flex: 1, contents: [
                   { type: 'text', text: '1 ปี', size: 'md', weight: 'bold', color: '#0f172a' },
-                  { type: 'box', layout: 'horizontal', margin: 'xs', contents: [
-                    { type: 'text', text: 'ประหยัด 2 เดือน!', size: 'xs', color: '#fff', backgroundColor: '#06C755', cornerRadius: '6px', paddingAll: '3px', flex: 0 },
-                  ]},
+                  { type: 'text', text: '✨ ประหยัด 2 เดือน!', size: 'xs', color: '#06C755', margin: 'xs' },
                 ]},
                 { type: 'text', text: isPersonal ? '฿300' : '฿1,990', size: 'xl', weight: 'bold', color: '#06C755', align: 'end' },
               ],
