@@ -1302,4 +1302,75 @@ function flexTeamMenu(ownTeams, memberTeams) {
 }
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ ปฏิทินBoy Bot รันที่ port ${PORT}`));
+// ── Setup Rich Menu ──
+async function setupRichMenu() {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const files = fs.readdirSync(__dirname);
+    console.log('📁 ไฟล์ใน root:', files.filter(f => f.includes('png') || f.includes('rich')).join(', ') || 'ไม่มีไฟล์รูป');
+    const candidates = ['rich_menu.png', 'rich_menu.png.png', 'rich_menu.PNG'];
+    const imgPath = candidates.map(f => path.join(__dirname, f)).find(p => fs.existsSync(p));
+    if (!imgPath) { console.log('⚠️ ไม่พบไฟล์ rich_menu.png'); return; }
+    console.log('✅ พบไฟล์:', path.basename(imgPath));
+
+    // เช็คว่ามี Rich Menu อยู่แล้วไหม
+    const listRes = await fetch('https://api.line.me/v2/bot/richmenu/list', {
+      headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+    });
+    const listData = await listRes.json();
+    if (listData.richmenus && listData.richmenus.length > 0) {
+      console.log('📋 Rich Menu มีอยู่แล้ว ID:', listData.richmenus[0].richMenuId);
+      return;
+    }
+
+    console.log('🚀 กำลังสร้าง Rich Menu...');
+    const createRes = await fetch('https://api.line.me/v2/bot/richmenu', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        size: { width: 2500, height: 1686 }, selected: true,
+        name: 'ปฏิทินBoy Rich Menu', chatBarText: '📅 เมนู ปฏิทินBoy',
+        areas: [
+          { bounds: { x: 0,    y: 0,    width: 1240, height: 562 }, action: { type: 'message', text: 'เมนู' } },
+          { bounds: { x: 1248, y: 0,    width: 600,  height: 562 }, action: { type: 'message', text: 'กำหนดการ' } },
+          { bounds: { x: 1856, y: 0,    width: 636,  height: 562 }, action: { type: 'message', text: 'เพิ่มนัด' } },
+          { bounds: { x: 0,    y: 574,  width: 474,  height: 554 }, action: { type: 'message', text: 'นัดหมายทั้งหมด' } },
+          { bounds: { x: 484,  y: 574,  width: 474,  height: 554 }, action: { type: 'message', text: 'ปฏิทิน' } },
+          { bounds: { x: 968,  y: 574,  width: 474,  height: 554 }, action: { type: 'message', text: 'ค้นหา' } },
+          { bounds: { x: 1452, y: 574,  width: 474,  height: 554 }, action: { type: 'message', text: 'จัดการนัด' } },
+          { bounds: { x: 1936, y: 574,  width: 556,  height: 554 }, action: { type: 'message', text: 'จัดการทีม' } },
+          { bounds: { x: 0,    y: 1138, width: 474,  height: 548 }, action: { type: 'message', text: 'ตั้งแจ้งเตือน' } },
+          { bounds: { x: 484,  y: 1138, width: 474,  height: 548 }, action: { type: 'message', text: 'สรุปงานวันนี้' } },
+          { bounds: { x: 968,  y: 1138, width: 474,  height: 548 }, action: { type: 'message', text: 'ตั้งซ้ำ' } },
+          { bounds: { x: 1452, y: 1138, width: 474,  height: 548 }, action: { type: 'message', text: 'แพลน' } },
+          { bounds: { x: 1936, y: 1138, width: 556,  height: 548 }, action: { type: 'message', text: 'เมนู' } },
+        ]
+      })
+    });
+    const createData = await createRes.json();
+    if (!createRes.ok) { console.error('❌ สร้าง Rich Menu ไม่สำเร็จ:', JSON.stringify(createData)); return; }
+    const richMenuId = createData.richMenuId;
+    console.log('✅ สร้าง Rich Menu ID:', richMenuId);
+
+    const imageBuffer = fs.readFileSync(imgPath);
+    const uploadRes = await fetch(`https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'image/png' },
+      body: imageBuffer,
+    });
+    if (!uploadRes.ok) { console.error('❌ อัปโหลดรูปไม่สำเร็จ:', await uploadRes.text()); return; }
+    console.log('✅ อัปโหลดรูปสำเร็จ');
+
+    await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+    });
+    console.log('🎉 Rich Menu 12 ช่องพร้อมใช้งานแล้วครับ!');
+  } catch(e) { console.error('setupRichMenu error:', e.message); }
+}
+
+app.listen(PORT, () => {
+  console.log(`✅ ปฏิทินBoy Bot รันที่ port ${PORT}`);
+  setupRichMenu();
+});
