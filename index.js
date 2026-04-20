@@ -464,7 +464,17 @@ async function checkReminders() {
           await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
           await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
           console.log(`✅ แจ้งเตือน 30 นาที: ${apt.title}`);
-        } catch(e) { console.error('Push error:', e.message); }
+        } catch(e) {
+          if (e.message && e.message.includes('429')) {
+            console.log(`⏳ Rate limit - รอ 5 วิแล้วลองใหม่: ${apt.title}`);
+            await new Promise(r => setTimeout(r, 5000));
+            try {
+              await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
+              await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
+              console.log(`✅ แจ้งเตือน (retry): ${apt.title}`);
+            } catch(e2) { console.error('Push retry error:', e2.message); }
+          } else { console.error('Push error:', e.message); }
+        }
       }
     }
     const { data: customApts } = await supabase.from('appointments').select('*').eq('meeting_date', todayStr).not('reminders', 'eq', '[]').not('reminders', 'is', null);
@@ -1560,19 +1570,19 @@ async function setupRichMenu() {
     if (!imgPath) { console.log('⚠️ ไม่พบไฟล์ rich_menu.png'); return; }
     console.log('✅ พบไฟล์:', path.basename(imgPath));
 
-    // ลบ Rich Menu เก่าทิ้งก่อน
+    // เช็ค Rich Menu ที่มีอยู่
     const listRes = await fetch('https://api.line.me/v2/bot/richmenu/list', {
       headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
     });
     const listData = await listRes.json();
     if (listData.richmenus && listData.richmenus.length > 0) {
-      for (const rm of listData.richmenus) {
-        await fetch(`https://api.line.me/v2/bot/richmenu/${rm.richMenuId}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
-        });
-        console.log('🗑️ ลบ Rich Menu เก่า:', rm.richMenuId);
-      }
+      console.log('📋 Rich Menu มีอยู่แล้ว ID:', listData.richmenus[0].richMenuId);
+      // ตั้ง default อีกครั้งให้แน่ใจ
+      await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${listData.richmenus[0].richMenuId}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+      });
+      return;
     }
 
     console.log('🚀 กำลังสร้าง Rich Menu...');
