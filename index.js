@@ -448,12 +448,21 @@ async function checkReminders() {
     const todayStr = formatDate(now);
     const currentMins = now.getHours() * 60 + now.getMinutes();
     console.log(`🔔 ${todayStr} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`);
-    const target30 = new Date(now.getTime() + 30 * 60 * 1000);
-    const targetTime = `${String(target30.getHours()).padStart(2,'0')}:${String(target30.getMinutes()).padStart(2,'0')}:00`;
-    const { data: freeApts } = await supabase.from('appointments').select('*').eq('meeting_date', todayStr).eq('start_time', targetTime).eq('reminded', false);
+    // ดึงนัดวันนี้ทั้งหมดที่ยังไม่แจ้งเตือน แล้วเช็คเวลาแบบ range (28-32 นาที) แทน exact match
+    const { data: freeApts } = await supabase.from('appointments').select('*')
+      .eq('meeting_date', todayStr).eq('reminded', false).eq('archived', false);
     for (const apt of (freeApts || [])) {
       if (apt.reminders && apt.reminders.length > 0) continue;
-      try { await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] }); await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id); console.log(`✅ แจ้งเตือน 30 นาที: ${apt.title}`); } catch(e) { console.error('Push error:', e.message); }
+      if (!apt.start_time) continue;
+      const [ah, am] = apt.start_time.slice(0,5).split(':').map(Number);
+      const diff = (ah * 60 + am) - currentMins;
+      if (diff >= 28 && diff <= 32) {
+        try {
+          await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
+          await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
+          console.log(`✅ แจ้งเตือน 30 นาที: ${apt.title} (อีก ${diff} นาที)`);
+        } catch(e) { console.error('Push error:', e.message); }
+      }
     }
     const { data: customApts } = await supabase.from('appointments').select('*').eq('meeting_date', todayStr).not('reminders', 'eq', '[]').not('reminders', 'is', null);
     for (const apt of (customApts || [])) {
