@@ -1563,25 +1563,30 @@ async function setupRichMenu() {
   try {
     const fs = require('fs');
     const path = require('path');
-    const files = fs.readdirSync(__dirname);
-    console.log('📁 ไฟล์ใน root:', files.filter(f => f.includes('png') || f.includes('rich')).join(', ') || 'ไม่มีไฟล์รูป');
+
+    // เช็ค Rich Menu ID ที่บันทึกไว้ใน Supabase ก่อน
+    const { data: setting } = await supabase.from('users')
+      .select('display_name').eq('line_user_id', 'SYSTEM_RICHMENU').single();
+    if (setting?.display_name) {
+      console.log('📋 Rich Menu ID จาก DB:', setting.display_name);
+      return; // มีแล้ว ไม่ต้องทำอะไรเพิ่ม
+    }
+
     const candidates = ['rich_menu.png', 'rich_menu.png.png', 'rich_menu.PNG'];
     const imgPath = candidates.map(f => path.join(__dirname, f)).find(p => fs.existsSync(p));
     if (!imgPath) { console.log('⚠️ ไม่พบไฟล์ rich_menu.png'); return; }
     console.log('✅ พบไฟล์:', path.basename(imgPath));
 
-    // เช็ค Rich Menu ที่มีอยู่
+    // เช็ค Rich Menu ที่มีอยู่ใน LINE
     const listRes = await fetch('https://api.line.me/v2/bot/richmenu/list', {
       headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
     });
     const listData = await listRes.json();
     if (listData.richmenus && listData.richmenus.length > 0) {
-      console.log('📋 Rich Menu มีอยู่แล้ว ID:', listData.richmenus[0].richMenuId);
-      // ตั้ง default อีกครั้งให้แน่ใจ
-      await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${listData.richmenus[0].richMenuId}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
-      });
+      const existingId = listData.richmenus[0].richMenuId;
+      console.log('📋 Rich Menu มีอยู่แล้ว ID:', existingId);
+      // บันทึก ID ลง Supabase
+      await supabase.from('users').upsert({ line_user_id: 'SYSTEM_RICHMENU', display_name: existingId, plan: 'free' });
       return;
     }
 
@@ -1644,6 +1649,8 @@ async function setupRichMenu() {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
     });
+    // บันทึก Rich Menu ID ลง Supabase ป้องกันสร้างซ้ำ
+    await supabase.from('users').upsert({ line_user_id: 'SYSTEM_RICHMENU', display_name: richMenuId, plan: 'free' });
     console.log('🎉 Rich Menu 12 ช่องพร้อมใช้งานแล้วครับ!');
   } catch(e) { console.error('setupRichMenu error:', e.message); }
 }
