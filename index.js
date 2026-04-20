@@ -451,29 +451,35 @@ async function checkReminders() {
     // ดึงนัดวันนี้ทั้งหมดที่ยังไม่แจ้งเตือน แล้วเช็คเวลาแบบ range (28-32 นาที) แทน exact match
     const { data: freeApts } = await supabase.from('appointments').select('*')
       .eq('meeting_date', todayStr).eq('reminded', false).eq('archived', false);
-    console.log(`📋 นัดวันนี้ที่ยังไม่แจ้ง: ${(freeApts||[]).length} รายการ`);
-    for (const apt of (freeApts || [])) {
-      const hasCustomReminders = apt.reminders && Array.isArray(apt.reminders) && apt.reminders.length > 0;
-      if (hasCustomReminders) continue;
-      if (!apt.start_time) continue;
+    // กรองเฉพาะนัดที่อยู่ในช่วง 28-32 นาที
+    const toRemind = (freeApts || []).filter(apt => {
+      if (!apt.start_time) return false;
+      if (apt.reminders && Array.isArray(apt.reminders) && apt.reminders.length > 0) return false;
       const [ah, am] = apt.start_time.slice(0,5).split(':').map(Number);
       const diff = (ah * 60 + am) - currentMins;
-      console.log(`⏱ "${apt.title}" เวลา ${apt.start_time.slice(0,5)} diff=${diff} นาที`);
-      if (diff >= 28 && diff <= 32) {
+      return diff >= 28 && diff <= 32;
+    });
+
+    // ส่งทีละคน มี delay 500ms ป้องกัน 429
+    for (let i = 0; i < toRemind.length; i++) {
+      const apt = toRemind[i];
+      if (i > 0) await new Promise(r => setTimeout(r, 500)); // delay ระหว่างแต่ละคน
+      let retries = 3;
+      while (retries > 0) {
         try {
           await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
           await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
-          console.log(`✅ แจ้งเตือน 30 นาที: ${apt.title}`);
+          console.log(`✅ แจ้งเตือน: ${apt.title} (${apt.user_id.slice(0,10)}...)`);
+          break;
         } catch(e) {
           if (e.message && e.message.includes('429')) {
-            console.log(`⏳ Rate limit - รอ 5 วิแล้วลองใหม่: ${apt.title}`);
-            await new Promise(r => setTimeout(r, 5000));
-            try {
-              await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
-              await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
-              console.log(`✅ แจ้งเตือน (retry): ${apt.title}`);
-            } catch(e2) { console.error('Push retry error:', e2.message); }
-          } else { console.error('Push error:', e.message); }
+            retries--;
+            console.log(`⏳ 429 รอ 10 วิ retry เหลือ ${retries} ครั้ง`);
+            await new Promise(r => setTimeout(r, 10000));
+          } else {
+            console.error('Push error:', e.message);
+            break;
+          }
         }
       }
     }
