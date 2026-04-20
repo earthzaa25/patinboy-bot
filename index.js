@@ -451,16 +451,19 @@ async function checkReminders() {
     // ดึงนัดวันนี้ทั้งหมดที่ยังไม่แจ้งเตือน แล้วเช็คเวลาแบบ range (28-32 นาที) แทน exact match
     const { data: freeApts } = await supabase.from('appointments').select('*')
       .eq('meeting_date', todayStr).eq('reminded', false).eq('archived', false);
+    console.log(`📋 นัดวันนี้ที่ยังไม่แจ้ง: ${(freeApts||[]).length} รายการ`);
     for (const apt of (freeApts || [])) {
-      if (apt.reminders && apt.reminders.length > 0) continue;
+      const hasCustomReminders = apt.reminders && Array.isArray(apt.reminders) && apt.reminders.length > 0;
+      if (hasCustomReminders) continue;
       if (!apt.start_time) continue;
       const [ah, am] = apt.start_time.slice(0,5).split(':').map(Number);
       const diff = (ah * 60 + am) - currentMins;
+      console.log(`⏱ "${apt.title}" เวลา ${apt.start_time.slice(0,5)} diff=${diff} นาที`);
       if (diff >= 28 && diff <= 32) {
         try {
           await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
           await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
-          console.log(`✅ แจ้งเตือน 30 นาที: ${apt.title} (อีก ${diff} นาที)`);
+          console.log(`✅ แจ้งเตือน 30 นาที: ${apt.title}`);
         } catch(e) { console.error('Push error:', e.message); }
       }
     }
