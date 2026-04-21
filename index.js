@@ -463,25 +463,27 @@ async function checkReminders() {
     // ส่งทีละคน มี delay 500ms ป้องกัน 429
     for (let i = 0; i < toRemind.length; i++) {
       const apt = toRemind[i];
-      if (i > 0) await new Promise(r => setTimeout(r, 500)); // delay ระหว่างแต่ละคน
-      let retries = 3;
-      while (retries > 0) {
+      if (i > 0) await new Promise(r => setTimeout(r, 1000));
+      // mark reminded = true ก่อนส่ง ป้องกันวนซ้ำถ้า 429
+      await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
+      let sent = false;
+      for (let retry = 0; retry < 3; retry++) {
         try {
+          if (retry > 0) await new Promise(r => setTimeout(r, 15000));
           await client.pushMessage({ to: apt.user_id, messages: [flexReminder(apt, 30)] });
-          await supabase.from('appointments').update({ reminded: true }).eq('id', apt.id);
-          console.log(`✅ แจ้งเตือน: ${apt.title} (${apt.user_id.slice(0,10)}...)`);
+          console.log(`✅ แจ้งเตือน: ${apt.title}`);
+          sent = true;
           break;
         } catch(e) {
           if (e.message && e.message.includes('429')) {
-            retries--;
-            console.log(`⏳ 429 รอ 10 วิ retry เหลือ ${retries} ครั้ง`);
-            await new Promise(r => setTimeout(r, 10000));
+            console.log(`⏳ 429 retry ${retry+1}/3: ${apt.title}`);
           } else {
             console.error('Push error:', e.message);
             break;
           }
         }
       }
+      if (!sent) console.log(`❌ ส่งไม่สำเร็จ (reminded=true แล้ว): ${apt.title}`);
     }
     const { data: customApts } = await supabase.from('appointments').select('*').eq('meeting_date', todayStr).not('reminders', 'eq', '[]').not('reminders', 'is', null);
     for (const apt of (customApts || [])) {
